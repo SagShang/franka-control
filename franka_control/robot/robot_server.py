@@ -323,9 +323,15 @@ class RobotServer:
 
                 if set_params is not None and not self._busy:
                     try:
-                        self._do_set(set_params)
-                    except Exception as e:
-                        logger.warning("Streaming set failed: %s", e)
+                        result = self._do_set(set_params)
+                        if not result.get("success", False):
+                            raise RuntimeError(
+                                result.get("error", "set command failed")
+                            )
+                    except Exception:
+                        logger.exception("Streaming set failed")
+                        self._running = False
+                        break
 
                 # 2. Process all pending commands
                 while True:

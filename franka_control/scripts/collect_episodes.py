@@ -237,12 +237,16 @@ def _wait_success(
     timeout: float = 300.0,
     raw_fd: int | None = None,
     display: Display | None = None,
+    idle_step=None,
+    idle_dt: float = 0.01,
 ) -> bool:
-    """Wait for Y (success) or N (failure) key press via teleop."""
+    """Wait for Y (success) or N (failure), optionally keeping teleop live."""
     logger.info("  Press Y=success / N=failure")
     deadline = time.monotonic() + timeout
     while time.monotonic() < deadline:
-        key = _read_key(raw_fd, timeout=0.05) if raw_fd is not None else None
+        loop_start = time.perf_counter()
+        key_timeout = 0.0 if idle_step is not None else 0.05
+        key = _read_key(raw_fd, timeout=key_timeout) if raw_fd is not None else None
         if key is None and display is not None:
             key = display.read_key(delay_ms=1)
         if key in ("y", "Y"):
@@ -257,7 +261,13 @@ def _wait_success(
                 return True
             if key in ("n",):
                 return False
-        time.sleep(0.01)
+        if idle_step is not None:
+            idle_step(action, info)
+            elapsed = time.perf_counter() - loop_start
+            if elapsed < idle_dt:
+                time.sleep(idle_dt - elapsed)
+        else:
+            time.sleep(0.01)
     logger.warning("Timeout waiting for success/failure, defaulting to failure")
     return False
 
@@ -274,6 +284,14 @@ def _read_cameras(cameras, config, last_images: dict) -> bool:
             return False
         last_images[cam.name] = cam_data["rgb"]
     return True
+
+
+def _scale_delta_action(action: np.ndarray, control_mode: str, dt: float) -> np.ndarray:
+    if control_mode == "ee_delta":
+        action[:6] *= dt
+    elif control_mode == "joint_delta":
+        action[:7] *= dt
+    return action
 
 
 def main():
@@ -523,10 +541,8 @@ def main():
                 args.task_name,
             )
 
-            if args.device == "gello":
-                initial_action, _ = teleop.get_action()
-                env.home_qpos = initial_action[:7].copy()
-            env.reset()
+            if args.device != "gello":
+                env.reset()
             recording = False
             record_start_time = 0.0
             record_count = 0
@@ -534,6 +550,11 @@ def main():
             sec_t0 = time.perf_counter()
             last_images = {}
             last_applied_action = None
+
+            idle_step = None
+            if args.device == "gello":
+                def idle_step(action, _info):
+                    env.step(_scale_delta_action(action, config.control_mode, dt))
 
             if args.device == "keyboard":
                 logger.info("Preview mode — move robot to start position. Controls:")
@@ -579,6 +600,7 @@ def main():
                             recorder, collector, last_applied_action,
                             last_images, record_count, record_start_time,
                             teleop, raw_fd=raw_fd, display=display,
+                            idle_step=idle_step, idle_dt=dt,
                         )
                         break
 
@@ -586,7 +608,8 @@ def main():
                     if recording:
                         _end_recording(recorder, collector, last_applied_action,
                                        last_images, record_count, record_start_time,
-                                       teleop, display=display)
+                                       teleop, display=display,
+                                       idle_step=idle_step, idle_dt=dt)
                     else:
                         logger.info("Episode skipped.")
                     break
@@ -614,10 +637,7 @@ def main():
                             teleop.clear_pressed_keys()
 
                 if not recording:
-                    if config.control_mode == "ee_delta":
-                        raw_action[:6] *= dt
-                    elif config.control_mode == "joint_delta":
-                        raw_action[:7] *= dt
+                    _scale_delta_action(raw_action, config.control_mode, dt)
                     env.step(raw_action)
                     _read_cameras(cameras, config, last_images)
                     if args.device in ("spacemouse", "gello"):
@@ -633,10 +653,7 @@ def main():
                 # ── Phase 2: Recording (dual-thread) ───────────────
                 # Cameras are read by recorder background thread
 
-                if config.control_mode == "ee_delta":
-                    raw_action[:6] *= dt
-                elif config.control_mode == "joint_delta":
-                    raw_action[:7] *= dt
+                _scale_delta_action(raw_action, config.control_mode, dt)
 
                 # Execute action (may block on gripper)
                 obs_after, _, _, _, step_info = env.step(raw_action)
@@ -721,7 +738,9 @@ def main():
 def _end_recording(recorder, collector, last_applied_action, last_images,
                    record_count, record_start_time, teleop,
                    raw_fd: int | None = None,
-                   display: Display | None = None) -> int:
+                   display: Display | None = None,
+                   idle_step=None,
+                   idle_dt: float = 0.01) -> int:
     """Stop recorder, drain remaining frames, end episode."""
     recorder.stop()
     extra = 0
@@ -741,7 +760,13 @@ def _end_recording(recorder, collector, last_applied_action, last_images,
         "Episode stats: %d frames, %.1fs, avg %.1f fps",
         total, duration, avg_fps,
     )
-    success = _wait_success(teleop, raw_fd=raw_fd, display=display)
+    success = _wait_success(
+        teleop,
+        raw_fd=raw_fd,
+        display=display,
+        idle_step=idle_step,
+        idle_dt=idle_dt,
+    )
     collector.end_episode(success=success)
     return total
 
