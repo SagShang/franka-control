@@ -9,4 +9,5 @@ python -m franka_control.scripts.openpi_inference \
 --high-camera base_camera \
 --wrist-camera wrist_camera \
 --cameras config/cameras.yaml \
+--display off \
 --hz 20

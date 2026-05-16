@@ -4,12 +4,22 @@ from __future__ import annotations
 
 import argparse
 import logging
+import os
 import signal
+import sys
 import time
 from pathlib import Path
 from typing import TYPE_CHECKING
 
 import numpy as np
+
+# Import OpenCV before robot/data modules so HighGUI initializes reliably.
+try:
+    import cv2 as _cv2
+except ImportError as _cv2_import_error:
+    _cv2 = None
+else:
+    _cv2_import_error = None
 
 from franka_control.openpi import ActionChunkQueue, OpenPIPolicyClient
 from franka_control.openpi.adapter import (
@@ -82,6 +92,128 @@ def _wait_for_camera_images(
         time.sleep(0.02)
     missing = sorted(required - set(last_images))
     raise RuntimeError(f"Timed out waiting for camera images: {missing}")
+
+
+class CameraPreview:
+    """Optional OpenCV preview for OpenPI inference camera frames."""
+
+    def __init__(self, mode: str = "auto", window_name: str = "OpenPI Inference"):
+        self.mode = mode
+        self.window_name = window_name
+        self.enabled = False
+        self._cv2 = None
+
+        if mode == "off":
+            logger.info("Camera preview disabled (--display off)")
+            return
+
+        if _cv2 is None:
+            self._handle_unavailable("OpenCV is not installed", _cv2_import_error)
+            return
+
+        cv2 = _cv2
+        reason = self._unavailable_reason(cv2)
+        if reason:
+            self._handle_unavailable(reason)
+            return
+
+        self._cv2 = cv2
+        self.enabled = True
+        logger.info("OpenCV camera preview enabled")
+
+    def _handle_unavailable(self, reason: str, exc: Exception | None = None) -> None:
+        if self.mode == "on":
+            raise RuntimeError(f"Camera preview requested but unavailable: {reason}") from exc
+        logger.warning("Camera preview disabled: %s", reason)
+
+    def _unavailable_reason(self, cv2) -> str | None:
+        if sys.platform.startswith("linux") and not (
+            os.environ.get("DISPLAY") or os.environ.get("WAYLAND_DISPLAY")
+        ):
+            return "DISPLAY/WAYLAND_DISPLAY is not set"
+
+        try:
+            build_info = cv2.getBuildInformation()
+        except Exception:
+            return None
+
+        for line in build_info.splitlines():
+            stripped = line.strip()
+            if stripped.startswith("GUI:"):
+                gui_backend = stripped.split(":", 1)[1].strip().upper()
+                if gui_backend in ("", "NONE", "NO"):
+                    return "OpenCV was built without HighGUI support"
+                return None
+        return None
+
+    def show(
+        self,
+        images: dict[str, np.ndarray],
+        *,
+        step: int,
+        queue_len: int,
+        dry_run: bool,
+    ) -> str | None:
+        """Render latest camera frames and return one pressed key, if any."""
+        if not self.enabled or self._cv2 is None or not images:
+            return None
+
+        cv2 = self._cv2
+        frames = []
+        names = []
+        for name, rgb in images.items():
+            frame = rgb
+            if frame.ndim == 3 and frame.shape[2] == 3:
+                frame = np.ascontiguousarray(frame[:, :, ::-1])
+            else:
+                frame = np.ascontiguousarray(frame)
+            frames.append(frame)
+            names.append(name)
+
+        target_h = frames[0].shape[0]
+        resized = []
+        for name, frame in zip(names, frames, strict=True):
+            if frame.shape[0] != target_h:
+                width = int(frame.shape[1] * target_h / frame.shape[0])
+                frame = cv2.resize(frame, (width, target_h))
+            frame = frame.copy()
+            cv2.putText(
+                frame,
+                name,
+                (10, 28),
+                cv2.FONT_HERSHEY_SIMPLEX,
+                0.8,
+                (255, 255, 255),
+                2,
+            )
+            resized.append(frame)
+
+        display = np.hstack(resized)
+        status = f"{'DRY-RUN' if dry_run else 'RUN'} step={step} queue={queue_len}"
+        cv2.putText(
+            display,
+            status,
+            (10, display.shape[0] - 16),
+            cv2.FONT_HERSHEY_SIMPLEX,
+            0.6,
+            (0, 255, 0),
+            2,
+        )
+        cv2.imshow(self.window_name, display)
+        return self._poll_key(delay_ms=1)
+
+    def close(self) -> None:
+        if self.enabled and self._cv2 is not None:
+            self._cv2.destroyAllWindows()
+
+    def _poll_key(self, delay_ms: int = 1) -> str | None:
+        key = self._cv2.waitKey(delay_ms)
+        if key < 0:
+            return None
+        key &= 0xFF
+        if key == 255:
+            return None
+        return chr(key)
 
 
 def _make_observation(
@@ -204,6 +336,12 @@ def _parse_args() -> argparse.Namespace:
         action="store_true",
         help="Do not map OpenPI 0=open/1=closed into FrankaEnv binary semantics",
     )
+    parser.add_argument(
+        "--display",
+        default="auto",
+        choices=["auto", "on", "off"],
+        help="Camera preview display mode (default: auto)",
+    )
 
     # Loop control
     parser.add_argument("--hz", type=float, default=20.0, help="Control frequency")
@@ -259,6 +397,7 @@ def main() -> None:
     )
     cameras = None
     policy = None
+    preview = None
     queue = ActionChunkQueue(
         action_key=args.action_key,
         return_horizon=args.return_horizon,
@@ -282,6 +421,7 @@ def main() -> None:
             timeout=args.camera_timeout,
         )
         logger.info("Camera frames ready: %s", sorted(last_images))
+        preview = CameraPreview(args.display)
 
         logger.info("Connecting robot environment...")
         if args.reset:
@@ -308,6 +448,16 @@ def main() -> None:
                 last_images,
                 obs_config,
             )
+            if preview is not None:
+                key = preview.show(
+                    last_images,
+                    step=step,
+                    queue_len=queue.queue_length,
+                    dry_run=args.dry_run,
+                )
+                if key in ("q", "\x1b"):
+                    logger.info("Camera preview requested stop.")
+                    break
             policy_action = queue.next_action(policy, observation)
             env_action = openpi_action_to_env_action(
                 policy_action,
@@ -345,6 +495,8 @@ def main() -> None:
             policy.close()
         if cameras is not None:
             cameras.close()
+        if preview is not None:
+            preview.close()
         env.close()
 
 

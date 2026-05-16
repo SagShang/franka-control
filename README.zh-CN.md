@@ -313,12 +313,14 @@ python -m franka_control.scripts.openpi_inference \
     --high-camera base_camera \
     --wrist-camera wrist_camera \
     --cameras config/cameras.yaml \
+    --display auto \
     --hz 20 \
     --dry-run
 ```
 
 确认动作方向和相机映射没问题后，去掉 `--dry-run` 即可执行；脚本会要求输入
-`RUN` 才开始动真机，除非额外传 `--yes`。
+`RUN` 才开始动真机，除非额外传 `--yes`。`--display auto` 会在 GUI 可用时打开
+OpenCV 相机预览窗口；在窗口中按 `q` 或 `Esc` 可停止推理。
 
 ## 7. 遥操作
 

@@ -293,6 +293,7 @@ python -m franka_control.scripts.openpi_inference \
     --high-camera base_camera \
     --wrist-camera wrist_camera \
     --cameras config/cameras.yaml \
+    --display auto \
     --hz 20 \
     --dry-run
 ```
@@ -300,7 +301,9 @@ python -m franka_control.scripts.openpi_inference \
 Remove `--dry-run` to execute actions. The script asks for `RUN` before moving
 the real robot unless `--yes` is passed. It sends OpenPI observations as
 `images.cam_high`, `images.cam_wrist`, `state`, and `prompt`, and consumes
-chunked `actions` responses by default.
+chunked `actions` responses by default. With `--display auto`, an OpenCV camera
+preview opens when GUI support is available; press `q` or `Esc` in the preview
+window to stop inference.
 
 For the full workflow, see [`docs/quickstart.md`](docs/quickstart.md).
 
