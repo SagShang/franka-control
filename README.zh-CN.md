@@ -299,6 +299,26 @@ python -m franka_control.scripts.measure_latency \
 6. 用 `run_trajectory --time-scale 3.0` 慢速执行。
 7. 配好相机后运行 `collect_episodes` 采集数据。
 8. 用 `scripts/play_dataset.py` 回放和检查数据。
+9. 如果要接 OpenPI server，可以先用 dry-run 验证 observation/action：
+
+```bash
+python -m franka_control.scripts.openpi_inference \
+    --host 172.18.1.228 \
+    --port 8001 \
+    --robot-ip 127.0.0.1 \
+    --gripper-host 127.0.0.1 \
+    --gripper-type robotiq \
+    --prompt "pick up the blue cube and place it in the basket" \
+    --control-mode joint_abs \
+    --high-camera base_camera \
+    --wrist-camera wrist_camera \
+    --cameras config/cameras.yaml \
+    --hz 20 \
+    --dry-run
+```
+
+确认动作方向和相机映射没问题后，去掉 `--dry-run` 即可执行；脚本会要求输入
+`RUN` 才开始动真机，除非额外传 `--yes`。
 
 ## 7. 遥操作
 
@@ -474,7 +494,7 @@ python -m franka_control.scripts.run_trajectory \
 
 | 字段 | shape | 说明 |
 |---|---:|---|
-| `observation.state` | `(8,)` | `q0..q6 + gripper_width` |
+| `observation.state` | `(8,)` | `q0..q6 + gripper_position` |
 | `observation.joint_vel` | `(7,)` | 关节速度 |
 | `observation.ee_pose` | `(7,)` | `x,y,z,qx,qy,qz,qw`，四元数顺序是 SciPy `xyzw` |
 | `observation.effort` | `(7,)` | 关节力矩 |
@@ -687,7 +707,7 @@ obs = {
     "joint_torque": np.zeros(7, dtype=np.float32),
     "ee_pos": np.zeros(3, dtype=np.float32),
     "ee_quat": np.array([0, 0, 0, 1], dtype=np.float32),
-    "gripper_width": np.array([0.08], dtype=np.float32),
+    "gripper_position": np.array([0.08], dtype=np.float32),
 }
 action = np.zeros(7, dtype=np.float32)
 

@@ -37,6 +37,7 @@ dependencies = [
     "pyyaml",
     "pyzmq",
     "msgpack",
+    "websockets",
     "torch",
     "torchvision",
     "lerobot>=0.5.0",
@@ -54,6 +55,7 @@ dependencies = [
 control-machine = [
     "pylibfranka",
     "aiofranka",
+    "pyrobotiqgripper",
 ]
 dev = [
     "pytest",

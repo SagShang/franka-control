@@ -12,7 +12,10 @@ from scipy.spatial.transform import Rotation
 logger = logging.getLogger(__name__)
 
 
-def streaming_to_obs(streaming_state: dict, gripper_width: float) -> dict:
+def streaming_to_obs(
+    streaming_state: dict,
+    gripper_position: float,
+) -> dict:
     """Convert RobotClient streaming state to obs dict for DataCollector."""
     qpos = streaming_state["qpos"]
     qvel = streaming_state["qvel"]
@@ -20,15 +23,16 @@ def streaming_to_obs(streaming_state: dict, gripper_width: float) -> dict:
     jac = streaming_state["jac"].reshape(6, 7)
     torque = streaming_state["last_torque"]
 
-    return {
+    obs = {
         "joint_pos": qpos.astype(np.float32),
         "joint_vel": qvel.astype(np.float32),
         "joint_torque": torque.astype(np.float32),
         "ee_pos": ee[:3, 3].astype(np.float32),
         "ee_quat": Rotation.from_matrix(ee[:3, :3]).as_quat().astype(np.float32),
         "ee_vel": (jac @ qvel).astype(np.float32),
-        "gripper_width": np.array([gripper_width], dtype=np.float32),
+        "gripper_position": np.array([gripper_position], dtype=np.float32),
     }
+    return obs
 
 
 class StateStreamRecorder:
@@ -59,7 +63,7 @@ class StateStreamRecorder:
             maxsize=int(fps * buffer_seconds)
         )
         self._stop = threading.Event()
-        self._gripper_width = 0.0
+        self._gripper_position = 0.0
         self._gripper_target = 1.0
         self._action_fn = action_fn
         self._last_images: dict = {}
@@ -67,12 +71,12 @@ class StateStreamRecorder:
         self._thread = None
 
     @property
-    def gripper_width(self) -> float:
-        return self._gripper_width
+    def gripper_position(self) -> float:
+        return self._gripper_position
 
-    @gripper_width.setter
-    def gripper_width(self, value: float) -> None:
-        self._gripper_width = value
+    @gripper_position.setter
+    def gripper_position(self, value: float) -> None:
+        self._gripper_position = value
 
     @property
     def gripper_target(self) -> float:
@@ -124,7 +128,10 @@ class StateStreamRecorder:
             if robot is not None:
                 streaming = robot.state
                 if streaming and "qpos" in streaming:
-                    obs = streaming_to_obs(streaming, self._gripper_width)
+                    obs = streaming_to_obs(
+                        streaming,
+                        self._gripper_position,
+                    )
                     if self._action_fn is not None:
                         action = self._action_fn(streaming)
 

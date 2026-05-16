@@ -67,7 +67,7 @@ obs = {
     "joint_torque": np.zeros(7, dtype=np.float32),
     "ee_pos": np.zeros(3, dtype=np.float32),
     "ee_quat": np.array([0, 0, 0, 1], dtype=np.float32),
-    "gripper_width": np.array([0.08], dtype=np.float32),
+    "gripper_position": np.array([0.08], dtype=np.float32),
 }
 
 collector.record_frame(obs, np.zeros(7, dtype=np.float32), images=None)

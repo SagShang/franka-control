@@ -171,7 +171,7 @@ class DatasetPlayer:
         ee_pose = frame["observation.ee_pose"].numpy()
         obs = {
             "joint_pos": state[:7],
-            "gripper_width": state[7],
+            "gripper_position": state[7],
             "joint_vel": frame["observation.joint_vel"].numpy(),
             "ee_pos": ee_pose[:3],
             "ee_quat": ee_pose[3:],
@@ -388,8 +388,8 @@ class Viewer:
 
         # 简洁模式下显示 gripper
         if self.hud_mode == "normal":
-            gripper = frame_data["obs"]["gripper_width"]
-            lines.append(f"Gripper: {gripper:.4f}m")
+            gripper = frame_data["obs"]["gripper_position"]
+            lines.append(f"Gripper: {gripper:.4f}")
 
         return lines
 
@@ -444,7 +444,7 @@ class Viewer:
         y += line_height
 
         # Gripper
-        gripper_str = f"Gripper: {obs['gripper_width']:6.4f}m"
+        gripper_str = f"Gripper: {obs['gripper_position']:6.4f}"
         cv2.putText(panel, gripper_str, (10, y), font, font_scale, color, thickness)
         y += line_height
 
@@ -722,9 +722,9 @@ class Visualizer:
         # Gripper 轨迹
         ax = fig.add_subplot(3, 3, 9)
         ax.plot(gripper_traj, linewidth=1.5)
-        ax.set_title("Gripper Width")
+        ax.set_title("Gripper Position")
         ax.set_xlabel("Frame")
-        ax.set_ylabel("Width (m)")
+        ax.set_ylabel("Position")
         ax.grid(True, alpha=0.3)
 
         # 标注抓取/释放时刻（width 突变点）
@@ -958,5 +958,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
-

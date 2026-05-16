@@ -131,7 +131,6 @@ class DataCollector:
             "action": action.astype(np.float32),
             "task": self._current_instruction,
         }
-
         # Add camera images
         if images:
             for cam_name, rgb in images.items():
@@ -181,8 +180,8 @@ class DataCollector:
     def _build_state(self, obs: dict) -> np.ndarray:
         """Build observation.state vector from FrankaEnv observation."""
         parts = [obs["joint_pos"]]  # (7,)
-        if "gripper_width" in obs:
-            parts.append(obs["gripper_width"])  # (1,)
+        if "gripper_position" in obs:
+            parts.append(obs["gripper_position"])  # (1,)
         else:
             parts.append(np.zeros(1, dtype=np.float32))
         return np.concatenate(parts).astype(np.float32)

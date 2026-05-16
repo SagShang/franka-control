@@ -43,6 +43,12 @@ def main():
                         help="Gripper server host (default: same as --robot-ip)")
     parser.add_argument("--gripper-port", type=int, default=5556)
     parser.add_argument(
+        "--gripper-type",
+        choices=["franka_hand", "robotiq"],
+        default="franka_hand",
+        help="Gripper protocol (default: franka_hand)",
+    )
+    parser.add_argument(
         "--device",
         default="spacemouse",
         choices=["spacemouse", "keyboard"],
@@ -85,6 +91,7 @@ def main():
         robot_ip=args.robot_ip,
         gripper_host=args.gripper_host,
         gripper_port=args.gripper_port,
+        gripper_type=args.gripper_type,
         action_mode="ee_delta",
         gripper_mode="binary" if use_gripper else "continuous",
     )

@@ -31,7 +31,7 @@ class TestFeatureBuilder:
         # Check action dimension
         assert features["action"]["shape"] == (8,)
         assert len(features["action"]["names"]) == 8
-        assert features["action"]["names"][-1] == "gripper"
+        assert features["action"]["names"][-1] == "gripper_position"
 
     def test_ee_mode_features(self):
         """Test feature schema for ee control modes."""
@@ -48,7 +48,25 @@ class TestFeatureBuilder:
         # Check action dimension
         assert features["action"]["shape"] == (7,)
         assert len(features["action"]["names"]) == 7
-        assert features["action"]["names"][-1] == "gripper"
+        assert features["action"]["names"][-1] == "gripper_position"
+
+    def test_robotiq_features_reuse_gripper_position_name(self):
+        """Test Robotiq schemas reuse the shared gripper position field."""
+        config = CollectionConfig(
+            repo_id="test/dataset",
+            root=Path("/tmp/test"),
+            task_name="test",
+            robot_ip="127.0.0.1",
+            gripper_host="127.0.0.1",
+            gripper_type="robotiq",
+            control_mode="ee_delta",
+            gripper_mode="continuous",
+        )
+        features = build_franka_features(config)
+
+        assert "observation.robotiq_position" not in features
+        assert features["observation.state"]["names"][-1] == "gripper_position"
+        assert features["action"]["names"][-1] == "gripper_position"
 
     def test_camera_features(self):
         """Test camera feature generation."""
@@ -134,7 +152,7 @@ class TestDataCollector:
             "joint_torque": np.zeros(7, dtype=np.float32),
             "ee_pos": np.zeros(3, dtype=np.float32),
             "ee_quat": np.array([0, 0, 0, 1], dtype=np.float32),
-            "gripper_width": np.array([0.08], dtype=np.float32),
+            "gripper_position": np.array([0.08], dtype=np.float32),
         }
 
     def test_episode_lifecycle(self, collector):

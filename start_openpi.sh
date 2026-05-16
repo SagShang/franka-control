@@ -1,0 +1,12 @@
+python -m franka_control.scripts.openpi_inference \
+--host 172.18.1.228 \
+--port 8001 \
+--robot-ip 127.0.0.1 \
+--gripper-host 127.0.0.1 \
+--gripper-type robotiq \
+--prompt "pick up the blue cube and place it in the basket" \
+--control-mode joint_abs \
+--high-camera base_camera \
+--wrist-camera wrist_camera \
+--cameras config/cameras.yaml \
+--hz 20

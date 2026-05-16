@@ -204,7 +204,7 @@
 - Dataset loads without errors
 - num_episodes matches collected count
 - Action shape matches control_mode (8 for joint, 7 for ee)
-- Observation keys present: joint_pos, ee_pos, ee_quat, gripper_width
+- Observation keys present: joint_pos, ee_pos, ee_quat, gripper_position
 
 **Pass Criteria:** ✅ LeRobot can load and iterate dataset
 

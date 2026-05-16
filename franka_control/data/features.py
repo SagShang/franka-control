@@ -19,11 +19,14 @@ def build_franka_features(
     """
     features = {}
 
-    # observation.state: joint_pos(7) + gripper_width(1) = 8
+    # observation.state: joint_pos(7) + gripper_position(1) = 8.
+    # Franka Hand stores width in meters; Robotiq stores native position bits.
     features["observation.state"] = {
         "dtype": "float32",
         "shape": (8,),
-        "names": ["q0", "q1", "q2", "q3", "q4", "q5", "q6", "gripper_width"],
+        "names": [
+            "q0", "q1", "q2", "q3", "q4", "q5", "q6", "gripper_position"
+        ],
     }
 
     # observation.joint_vel: 7 DOF
@@ -48,12 +51,14 @@ def build_franka_features(
     }
 
     # action: dimension depends on control_mode
+    gripper_action_name = "gripper_position"
+
     if config.control_mode in ("joint_abs", "joint_delta"):
         action_dim = 8  # 7 joint + 1 gripper
-        action_names = [f"q{i}" for i in range(7)] + ["gripper"]
+        action_names = [f"q{i}" for i in range(7)] + [gripper_action_name]
     else:  # ee_abs, ee_delta
         action_dim = 7  # 6 (pos+rotvec) + 1 gripper
-        action_names = ["x", "y", "z", "rx", "ry", "rz", "gripper"]
+        action_names = ["x", "y", "z", "rx", "ry", "rz", gripper_action_name]
 
     features["action"] = {
         "dtype": "float32",

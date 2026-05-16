@@ -16,7 +16,7 @@ def test_streaming_to_obs_shapes_and_quaternion_order():
         "last_torque": np.full(7, 0.5, dtype=np.float64),
     }
 
-    obs = streaming_to_obs(streaming_state, gripper_width=0.04)
+    obs = streaming_to_obs(streaming_state, gripper_position=0.04)
 
     assert obs["joint_pos"].shape == (7,)
     assert obs["joint_vel"].shape == (7,)
@@ -24,10 +24,28 @@ def test_streaming_to_obs_shapes_and_quaternion_order():
     assert obs["ee_pos"].shape == (3,)
     assert obs["ee_quat"].shape == (4,)
     assert obs["ee_vel"].shape == (6,)
-    assert obs["gripper_width"].shape == (1,)
+    assert obs["gripper_position"].shape == (1,)
     assert np.allclose(obs["ee_quat"], np.array([0.0, 0.0, 0.0, 1.0]))
     assert np.allclose(obs["ee_vel"], np.full(6, 7.0))
-    assert obs["gripper_width"][0] == np.float32(0.04)
+    assert obs["gripper_position"][0] == np.float32(0.04)
+
+
+def test_streaming_to_obs_records_gripper_position_value():
+    streaming_state = {
+        "qpos": np.arange(7, dtype=np.float64),
+        "qvel": np.ones(7, dtype=np.float64),
+        "ee": np.eye(4, dtype=np.float64),
+        "jac": np.ones((6, 7), dtype=np.float64),
+        "last_torque": np.full(7, 0.5, dtype=np.float64),
+    }
+
+    obs = streaming_to_obs(
+        streaming_state,
+        gripper_position=123,
+    )
+
+    assert obs["gripper_position"].shape == (1,)
+    assert obs["gripper_position"][0] == np.float32(123)
 
 
 def test_state_stream_recorder_packages_rgb_and_depth_extra():
@@ -59,6 +77,7 @@ def test_state_stream_recorder_packages_rgb_and_depth_extra():
     )
 
     recorder.start()
+    recorder.gripper_position = 123
     time.sleep(0.08)
     recorder.stop()
     frames = recorder.drain()

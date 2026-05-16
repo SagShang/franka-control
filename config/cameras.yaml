@@ -1,11 +1,11 @@
-d435:
-  serial: "138422075015"
+wrist_camera:
+  serial: "246422070533"
   resolution: [640, 480]
   fps: 60
   enable_depth: false
 
-d405:
-  serial: "352122274606"
+base_camera:
+  serial: "247122070727"
   resolution: [640, 480]
   fps: 60
   enable_depth: false

@@ -317,7 +317,8 @@ Before retrying:
   - Cartesian translation is meters.
   - Rotation-vector values are radians.
   - Joint angles are radians.
-  - Gripper width is meters.
+  - Franka Hand `gripper_position` is width in meters; Robotiq
+    `gripper_position` is the native 0..255 position.
 - Verify `--robot-ip` points to the intended control PC.
 - Run a dry trajectory plan before execution:
 

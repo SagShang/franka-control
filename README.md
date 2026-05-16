@@ -137,6 +137,7 @@ Important IP names:
 | Waypoint capture | `franka_control/scripts/collect_waypoints.py` | `python -m franka_control.scripts.collect_waypoints` |
 | Trajectory execution | `franka_control/scripts/run_trajectory.py` | `python -m franka_control.scripts.run_trajectory` |
 | Dataset collection | `franka_control/scripts/collect_episodes.py` | `python -m franka_control.scripts.collect_episodes` |
+| OpenPI inference | `franka_control/scripts/openpi_inference.py` | `python -m franka_control.scripts.openpi_inference` |
 | Dataset player | `scripts/play_dataset.py` | `python scripts/play_dataset.py` |
 | Cameras | `franka_control/cameras/camera_manager.py` | Python API / collection script |
 | LeRobot writer | `franka_control/data/collector.py` | Python API |
@@ -278,6 +279,29 @@ python scripts/play_dataset.py \
     --root data/franka_pick
 ```
 
+7. Run an OpenPI policy server against the real robot:
+
+```bash
+python -m franka_control.scripts.openpi_inference \
+    --host 172.18.1.228 \
+    --port 8001 \
+    --robot-ip 127.0.0.1 \
+    --gripper-host 127.0.0.1 \
+    --gripper-type robotiq \
+    --prompt "pick up the blue cube and place it in the basket" \
+    --control-mode joint_abs \
+    --high-camera base_camera \
+    --wrist-camera wrist_camera \
+    --cameras config/cameras.yaml \
+    --hz 20 \
+    --dry-run
+```
+
+Remove `--dry-run` to execute actions. The script asks for `RUN` before moving
+the real robot unless `--yes` is passed. It sends OpenPI observations as
+`images.cam_high`, `images.cam_wrist`, `state`, and `prompt`, and consumes
+chunked `actions` responses by default.
+
 For the full workflow, see [`docs/quickstart.md`](docs/quickstart.md).
 
 ## Dataset Format
@@ -286,7 +310,7 @@ The collector writes LeRobot v3 datasets. Default features:
 
 | Key | Shape | Description |
 |---|---:|---|
-| `observation.state` | `(8,)` | `q0..q6 + gripper_width` |
+| `observation.state` | `(8,)` | `q0..q6 + gripper_position` |
 | `observation.joint_vel` | `(7,)` | Joint velocities |
 | `observation.ee_pose` | `(7,)` | `x,y,z,qx,qy,qz,qw` in SciPy `xyzw` order |
 | `observation.effort` | `(7,)` | Joint torques |

@@ -273,6 +273,12 @@ def main():
         help="Gripper server host (default: same as --robot-ip)",
     )
     parser.add_argument("--gripper-port", type=int, default=5556)
+    parser.add_argument(
+        "--gripper-type",
+        choices=["franka_hand", "robotiq"],
+        default="franka_hand",
+        help="Gripper protocol (default: franka_hand)",
+    )
     parser.add_argument("--repo-id", required=True, help="Dataset repo ID")
     parser.add_argument("--root", required=True, help="Local dataset directory")
     parser.add_argument("--task-name", default="manipulation", help="Task name / instruction")
@@ -373,6 +379,7 @@ def main():
         robot_ip=args.robot_ip,
         gripper_host=args.gripper_host or args.robot_ip,
         gripper_port=args.gripper_port,
+        gripper_type=args.gripper_type,
         control_mode=args.control_mode,
         gripper_mode=gripper_mode or "binary",
         fps=args.fps,
@@ -386,6 +393,7 @@ def main():
         action_mode=config.control_mode,
         gripper_host=config.gripper_host,
         gripper_port=config.gripper_port,
+        gripper_type=config.gripper_type,
         gripper_mode=config.gripper_mode,
     )
 
@@ -417,9 +425,10 @@ def main():
     old_term = None
 
     logger.info(
-        "Config: mode=%s, device=%s, fps=%d, gripper=%s, cameras=%s, display=%s, "
+        "Config: mode=%s, device=%s, fps=%d, gripper=%s/%s, cameras=%s, display=%s, "
         "action_scale=(%.1f, %.1f), freeze_rotation=%s",
-        args.control_mode, args.device, args.fps, args.gripper_mode,
+        args.control_mode, args.device, args.fps, args.gripper_type,
+        args.gripper_mode,
         "off" if cameras is None else f"{len(config.cameras)}x", args.display,
         action_scale[0], action_scale[1], args.freeze_rotation,
     )
@@ -531,7 +540,7 @@ def main():
                         sec_t0 = time.perf_counter()
                         _read_cameras(cameras, config, last_images)
                         init_obs = env.get_observation()
-                        recorder.gripper_width = init_obs["gripper_width"][0]
+                        recorder.gripper_position = init_obs["gripper_position"][0]
                         recorder.start()
                         collector.start_episode(instruction=args.task_name)
                         logger.info(">>> Recording started <<<")
@@ -566,7 +575,7 @@ def main():
                 # Execute action (may block on gripper)
                 obs_after, _, _, _, step_info = env.step(raw_action)
                 applied_action = step_info["applied_action"]
-                recorder.gripper_width = obs_after["gripper_width"][0]
+                recorder.gripper_position = obs_after["gripper_position"][0]
                 last_applied_action = applied_action
 
                 # Drain accumulated (obs, images) from background thread

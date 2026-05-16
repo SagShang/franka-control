@@ -5,12 +5,12 @@
 >
 > | 设计文档 | 实际实现 |
 > |---------|---------|
-> | 观测空间嵌套 `{"state": {...}, "images": {...}}` | 扁平字典 `{"joint_pos", "joint_vel", "ee_pos", "ee_quat", "ee_vel", "joint_torque", "gripper_width"}` |
+> | 观测空间嵌套 `{"state": {...}, "images": {...}}` | 扁平字典 `{"joint_pos", "joint_vel", "ee_pos", "ee_quat", "ee_vel", "joint_torque", "gripper_position"}` |
 > | 动作空间归一化 `[-1, 1]` + action_scale | 物理单位（rad, m），`joint_delta` 范围 `[-0.1, 0.1]` |
 > | `step()` 含频率控制 `time.sleep()` 和 `compute_reward()` | 无频率控制，始终返回 `reward=0.0, terminated=False, truncated=False` |
 > | 夹爪用 `zmq.REQ` + JSON | 夹爪用 `zmq.DEALER/ROUTER` + msgpack |
 > | `__init__` 中连接硬件 | `connect()` 延迟连接，`__init__` 不触发硬件 |
-> | `gripper_pos` 范围 `[0, 1]` | `gripper_width` 范围 `[0, 0.08]` 米 |
+> | `gripper_pos` 范围 `[0, 1]` | `gripper_position`：Franka Hand 为宽度米值，Robotiq 为 0..255 原生位置 |
 > | SafetyBox 独立 wrapper | `_clip_safety()` 内联在 env 中，仅关节限位 |
 > | 无 `move_to()` / `set_action_mode()` | 已实现（Phase 2 新增） |
 > | 图像在 env 观测中 | 图像由独立 `CameraManager` 管理，不在 env 观测中 |

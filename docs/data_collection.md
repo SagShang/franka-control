@@ -20,7 +20,7 @@ Default features:
 
 | Key | Shape | Description |
 |---|---:|---|
-| `observation.state` | `(8,)` | `q0..q6 + gripper_width` |
+| `observation.state` | `(8,)` | `q0..q6 + gripper_position` |
 | `observation.joint_vel` | `(7,)` | Joint velocity |
 | `observation.ee_pose` | `(7,)` | `x,y,z,qx,qy,qz,qw` |
 | `observation.effort` | `(7,)` | Joint torque |

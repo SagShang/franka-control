@@ -5,6 +5,7 @@ gymnasium
 pyyaml
 pyzmq
 msgpack
+websockets
 
 # PyTorch (for lerobot, ultralytics)
 torch
@@ -31,3 +32,4 @@ toppra
 # Control machine only (requires Franka FCI)
 # pylibfranka
 # aiofranka
+# pyrobotiqgripper
