@@ -252,6 +252,24 @@ python -m franka_control.scripts.teleop \
     --hz 50
 ```
 
+Optional GELLO leader-arm teleoperation uses absolute joint control. Install or
+point at the upstream GELLO checkout first:
+
+```bash
+python -m pip install -e /home/shang/gello_software
+
+python -m franka_control.scripts.teleop \
+    --robot-ip 192.168.0.100 \
+    --gripper-host 192.168.0.100 \
+    --device gello \
+    --gello-config /home/shang/gello_software/ros2/src/franka_gello_state_publisher/config/franka_gello_single.yaml \
+    --gello-section SINGLE \
+    --hz 50
+```
+
+You can use `--gello-root /home/shang/gello_software` instead of installing
+the upstream package into the environment.
+
 5. Collect demonstrations:
 
 ```bash
@@ -270,6 +288,10 @@ python -m franka_control.scripts.collect_episodes \
     --cameras config/cameras.yaml \
     --display auto
 ```
+
+For GELLO collection, use `--device gello --control-mode joint_abs` plus the
+same `--gello-config` options shown above. Episode start/end/discard commands
+remain keyboard-driven (`s`, `e`, `f`, `q`).
 
 6. Inspect the dataset:
 

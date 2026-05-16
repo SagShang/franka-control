@@ -7,6 +7,7 @@ Controls:
     SpaceMouse: 6-DOF Cartesian delta control
     Left button: close gripper
     Right button: open gripper
+    GELLO: 7-DOF absolute joint control
     Ctrl+C: stop
 """
 
@@ -17,7 +18,7 @@ import time
 from collections import deque
 
 from franka_control.envs.franka_env import FrankaEnv
-from franka_control.teleop import KeyboardTeleop, SpaceMouseTeleop
+from franka_control.teleop import GelloTeleop, KeyboardTeleop, SpaceMouseTeleop
 
 logging.basicConfig(
     level=logging.INFO,
@@ -36,6 +37,15 @@ def _keyboard_help() -> str:
     )
 
 
+def _gello_help() -> str:
+    return (
+        "GELLO controls:\n"
+        "  Move the GELLO leader arm to command absolute FR3 joint positions\n"
+        "  GELLO gripper maps continuously to the configured gripper\n"
+        "  Ctrl+C: exit"
+    )
+
+
 def main():
     parser = argparse.ArgumentParser(description="Franka teleoperation")
     parser.add_argument("--robot-ip", required=True, help="Control machine IP")
@@ -51,8 +61,17 @@ def main():
     parser.add_argument(
         "--device",
         default="spacemouse",
-        choices=["spacemouse", "keyboard"],
+        choices=["spacemouse", "keyboard", "gello"],
         help="Teleop device (default: spacemouse)",
+    )
+    parser.add_argument(
+        "--control-mode",
+        default=None,
+        choices=["joint_abs", "joint_delta", "ee_abs", "ee_delta"],
+        help=(
+            "Robot control mode. Defaults to ee_delta for SpaceMouse/keyboard "
+            "and joint_abs for GELLO."
+        ),
     )
     parser.add_argument(
         "--action-scale-t", type=float, default=2.0,
@@ -69,7 +88,44 @@ def main():
         "--freeze-rotation", action="store_true",
         help="Freeze rotation (3-DOF translation only)",
     )
+    parser.add_argument(
+        "--gello-config",
+        default=None,
+        help=(
+            "GELLO YAML config path. Can point at gello_software ROS2 config, "
+            "for example ros2/src/franka_gello_state_publisher/config/"
+            "franka_gello_single.yaml"
+        ),
+    )
+    parser.add_argument(
+        "--gello-section",
+        default="SINGLE",
+        help="Top-level section in --gello-config (default: SINGLE)",
+    )
+    parser.add_argument(
+        "--gello-port",
+        default=None,
+        help="Override GELLO serial port (default: com_port from config)",
+    )
+    parser.add_argument(
+        "--gello-root",
+        default=None,
+        help=(
+            "Path to gello_software checkout when the gello package is not "
+            "installed in this environment"
+        ),
+    )
     args = parser.parse_args()
+
+    control_mode = args.control_mode
+    if control_mode is None:
+        control_mode = "joint_abs" if args.device == "gello" else "ee_delta"
+    if args.device == "gello" and control_mode != "joint_abs":
+        parser.error("--device gello currently requires --control-mode joint_abs")
+    if args.device != "gello" and control_mode != "ee_delta":
+        parser.error("--device spacemouse/keyboard currently require --control-mode ee_delta")
+    if args.device == "gello" and args.gello_config is None:
+        parser.error("--device gello requires --gello-config")
 
     # Default gripper_host to robot_ip
     if args.gripper_host is None:
@@ -92,16 +148,32 @@ def main():
         gripper_host=args.gripper_host,
         gripper_port=args.gripper_port,
         gripper_type=args.gripper_type,
-        action_mode="ee_delta",
-        gripper_mode="binary" if use_gripper else "continuous",
+        action_mode=control_mode,
+        gripper_mode="continuous" if args.device == "gello" else (
+            "binary" if use_gripper else "continuous"
+        ),
     )
 
-    teleop_cls = SpaceMouseTeleop if args.device == "spacemouse" else KeyboardTeleop
-    teleop = teleop_cls(
-        action_scale=(args.action_scale_t, args.action_scale_r),
-        freeze_rotation=args.freeze_rotation,
-        gripper_mode="binary" if use_gripper else None,
-    )
+    if args.device == "gello":
+        teleop = GelloTeleop(
+            config_path=args.gello_config,
+            config_section=args.gello_section,
+            port=args.gello_port,
+            gello_root=args.gello_root,
+            gripper_mode="continuous" if use_gripper else None,
+            gripper_output=(
+                "robotiq_position"
+                if args.gripper_type == "robotiq"
+                else "franka_hand_width"
+            ),
+        )
+    else:
+        teleop_cls = SpaceMouseTeleop if args.device == "spacemouse" else KeyboardTeleop
+        teleop = teleop_cls(
+            action_scale=(args.action_scale_t, args.action_scale_r),
+            freeze_rotation=args.freeze_rotation,
+            gripper_mode="binary" if use_gripper else None,
+        )
 
     step_count = 0
 
@@ -114,6 +186,7 @@ def main():
     sec_sleep_max = 0.0
     sec_t0 = 0.0
     last_slow_mode = None
+    last_gello_gripper_log = 0.0
 
     def _print_sec(n_steps: int, slow_mode: bool | None) -> None:
         """Print per-second summary."""
@@ -149,9 +222,16 @@ def main():
 
     try:
         logger.info("Connecting to robot...")
+        if args.device == "gello":
+            initial_action, _ = teleop.get_action()
+            env.home_qpos = initial_action[:7].copy()
+            logger.info("Using current GELLO pose as initial joint target.")
         obs, _ = env.reset()
         if args.device == "spacemouse":
             logger.info("Ready. Use SpaceMouse to control. Ctrl+C to stop.")
+        elif args.device == "gello":
+            logger.info("Ready. Use GELLO to control. Ctrl+C to stop.")
+            logger.info("%s", _gello_help())
         else:
             logger.info("Ready. Use keyboard to control. Ctrl+C or Esc to stop.")
             logger.info("%s", _keyboard_help())
@@ -167,6 +247,14 @@ def main():
             action, info = teleop.get_action()
             t_action = (time.perf_counter() - t1) * 1000
             hist_action.append(t_action)
+            if args.device == "gello" and time.perf_counter() - last_gello_gripper_log > 1.0:
+                logger.info(
+                    "GELLO gripper: %.0f%% -> %.4f (%s)",
+                    100.0 * float(info.get("gripper_percent", 0.0)),
+                    float(info.get("gripper", 0.0)),
+                    info.get("gripper_output", "gripper"),
+                )
+                last_gello_gripper_log = time.perf_counter()
             if info.get("exit_requested"):
                 running = False
                 continue
@@ -179,7 +267,10 @@ def main():
                 )
                 last_slow_mode = slow_mode
 
-            action[:6] *= dt
+            if control_mode == "ee_delta":
+                action[:6] *= dt
+            elif control_mode == "joint_delta":
+                action[:7] *= dt
 
             t2 = time.perf_counter()
             obs, reward, terminated, truncated, step_info = env.step(action)

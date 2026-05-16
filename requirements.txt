@@ -17,6 +17,8 @@ lerobot>=0.5.0
 # Teleoperation
 pyspacemouse
 pynput
+# Optional GELLO teleoperation; install upstream gello_software separately.
+dynamixel-sdk
 
 # Cameras
 pyrealsense2

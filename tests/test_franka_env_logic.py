@@ -102,3 +102,25 @@ def test_robotiq_binary_uses_native_close_not_franka_grasp():
         ("open", 255, 128),
     ]
     assert env._cached_robotiq_position == 0
+
+
+def test_robotiq_continuous_rejection_is_nonfatal():
+    class BusyRobotiqClient:
+        def __init__(self):
+            self.calls = []
+
+        def move(self, position, speed=255, force=128, wait=False):
+            self.calls.append((position, speed, force, wait))
+            return False
+
+    env = FrankaEnv(
+        robot_ip="127.0.0.1",
+        gripper_host="127.0.0.1",
+        gripper_type="robotiq",
+        gripper_mode="continuous",
+    )
+    env._gripper = BusyRobotiqClient()
+
+    env._apply_gripper_action(42)
+
+    assert env._gripper.calls == [(42, 255, 128, False)]

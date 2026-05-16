@@ -34,7 +34,7 @@ else:
 from franka_control.cameras import CameraManager
 from franka_control.data import CameraConfig, CollectionConfig, DataCollector, StateStreamRecorder
 from franka_control.envs import FrankaEnv
-from franka_control.teleop import KeyboardTeleop, SpaceMouseTeleop
+from franka_control.teleop import GelloTeleop, KeyboardTeleop, SpaceMouseTeleop
 
 logging.basicConfig(
     level=logging.INFO,
@@ -57,6 +57,14 @@ def _spacemouse_help() -> str:
     return (
         "  SpaceMouse: 6-DOF movement\n"
         "  Left button: close gripper, Right button: open gripper\n"
+        "  Keyboard: s=start, e=end, f=discard, q=quit"
+    )
+
+
+def _gello_help() -> str:
+    return (
+        "  GELLO: move leader arm to command absolute FR3 joint positions\n"
+        "  GELLO gripper: continuous configured-gripper control\n"
         "  Keyboard: s=start, e=end, f=discard, q=quit"
     )
 
@@ -298,7 +306,7 @@ def main():
     parser.add_argument(
         "--device",
         default="spacemouse",
-        choices=["spacemouse", "keyboard"],
+        choices=["spacemouse", "keyboard", "gello"],
         help="Teleop device",
     )
     parser.add_argument(
@@ -333,6 +341,31 @@ def main():
         help="SpaceMouse deadzone (default: 0.001)",
     )
 
+    # ── GELLO-specific ───────────────────────────────────────────
+    parser.add_argument(
+        "--gello-config",
+        default=None,
+        help="GELLO YAML config path (required for --device gello)",
+    )
+    parser.add_argument(
+        "--gello-section",
+        default="SINGLE",
+        help="Top-level section in --gello-config (default: SINGLE)",
+    )
+    parser.add_argument(
+        "--gello-port",
+        default=None,
+        help="Override GELLO serial port (default: com_port from config)",
+    )
+    parser.add_argument(
+        "--gello-root",
+        default=None,
+        help=(
+            "Path to gello_software checkout when the gello package is not "
+            "installed in this environment"
+        ),
+    )
+
     # ── Camera ───────────────────────────────────────────────────
     parser.add_argument("--no-camera", action="store_true", help="Disable cameras")
     parser.add_argument(
@@ -351,6 +384,11 @@ def main():
     parser.add_argument("--resume", action="store_true", help="Resume existing dataset")
 
     args = parser.parse_args()
+
+    if args.device == "gello" and args.control_mode != "joint_abs":
+        parser.error("--device gello requires --control-mode joint_abs")
+    if args.device == "gello" and args.gello_config is None:
+        parser.error("--device gello requires --gello-config")
 
     # Camera setup
     if args.no_camera:
@@ -371,6 +409,7 @@ def main():
         ]
 
     gripper_mode = None if args.gripper_mode == "none" else args.gripper_mode
+    env_gripper_mode = "continuous" if args.device == "gello" else gripper_mode
 
     config = CollectionConfig(
         repo_id=args.repo_id,
@@ -381,7 +420,7 @@ def main():
         gripper_port=args.gripper_port,
         gripper_type=args.gripper_type,
         control_mode=args.control_mode,
-        gripper_mode=gripper_mode or "binary",
+        gripper_mode=env_gripper_mode or "binary",
         fps=args.fps,
         cameras=cameras_list,
         save_failure=args.save_failure,
@@ -404,17 +443,30 @@ def main():
 
     # Teleop
     action_scale = (args.action_scale_t, args.action_scale_r)
-    teleop_cls = SpaceMouseTeleop if args.device == "spacemouse" else KeyboardTeleop
+    if args.device == "gello":
+        teleop = GelloTeleop(
+            config_path=args.gello_config,
+            config_section=args.gello_section,
+            port=args.gello_port,
+            gello_root=args.gello_root,
+            gripper_mode=env_gripper_mode,
+            gripper_output=(
+                "robotiq_position"
+                if args.gripper_type == "robotiq"
+                else "franka_hand_width"
+            ),
+        )
+    else:
+        teleop_cls = SpaceMouseTeleop if args.device == "spacemouse" else KeyboardTeleop
+        teleop_kwargs = {
+            "action_scale": action_scale,
+            "freeze_rotation": args.freeze_rotation,
+            "gripper_mode": gripper_mode,
+        }
+        if args.device == "spacemouse":
+            teleop_kwargs["deadzone"] = args.deadzone
 
-    teleop_kwargs = {
-        "action_scale": action_scale,
-        "freeze_rotation": args.freeze_rotation,
-        "gripper_mode": gripper_mode,
-    }
-    if args.device == "spacemouse":
-        teleop_kwargs["deadzone"] = args.deadzone
-
-    teleop = teleop_cls(**teleop_kwargs)
+        teleop = teleop_cls(**teleop_kwargs)
 
     # Create collector and state recorder
     collector = DataCollector(config, resume=args.resume)
@@ -443,7 +495,7 @@ def main():
     signal.signal(signal.SIGINT, _signal_handler)
 
     try:
-        if args.device == "spacemouse":
+        if args.device in ("spacemouse", "gello"):
             if sys.stdin.isatty():
                 raw_fd = sys.stdin.fileno()
                 old_term = _set_cbreak(raw_fd)
@@ -453,6 +505,10 @@ def main():
                 )
 
         logger.info("Resetting to home position...")
+        if args.device == "gello":
+            initial_action, _ = teleop.get_action()
+            env.home_qpos = initial_action[:7].copy()
+            logger.info("Using current GELLO pose as initial joint target.")
         env.reset()
 
         dt = 1.0 / config.fps
@@ -462,8 +518,16 @@ def main():
                 break
 
             logger.info("=" * 50)
-            logger.info("Episode %d/%d — instruction: %s", ep_idx + 1, args.num_episodes, args.task_name)
+            logger.info(
+                "Episode %d/%d - instruction: %s",
+                ep_idx + 1,
+                args.num_episodes,
+                args.task_name,
+            )
 
+            if args.device == "gello":
+                initial_action, _ = teleop.get_action()
+                env.home_qpos = initial_action[:7].copy()
             env.reset()
             recording = False
             record_start_time = 0.0
@@ -477,6 +541,10 @@ def main():
                 logger.info("Preview mode — move robot to start position. Controls:")
                 for line in _keyboard_help().split("\n"):
                     logger.info(line)
+            elif args.device == "gello":
+                logger.info("Preview mode — move robot to start position. Controls:")
+                for line in _gello_help().split("\n"):
+                    logger.info(line)
             else:
                 logger.info("Preview mode — move robot to start position.")
                 for line in _spacemouse_help().split("\n"):
@@ -488,11 +556,11 @@ def main():
                 raw_action, info = teleop.get_action()
                 command_key = (
                     _read_command_key(raw_fd, display)
-                    if args.device == "spacemouse"
+                    if args.device in ("spacemouse", "gello")
                     else None
                 )
 
-                if args.device == "spacemouse" and command_key:
+                if args.device in ("spacemouse", "gello") and command_key:
                     if command_key in ("q", "\x03"):
                         if recording:
                             recorder.stop()
@@ -526,7 +594,7 @@ def main():
                     break
 
                 if not recording:
-                    if args.device == "spacemouse":
+                    if args.device in ("spacemouse", "gello"):
                         start_requested = command_key == "s"
                     else:
                         pressed = info.get("pressed_keys", [])
@@ -554,7 +622,7 @@ def main():
                         raw_action[:7] *= dt
                     env.step(raw_action)
                     _read_cameras(cameras, config, last_images)
-                    if args.device == "spacemouse":
+                    if args.device in ("spacemouse", "gello"):
                         overlay = "PREVIEW - Press S=start E=end F=discard Q=quit"
                     else:
                         overlay = "PREVIEW - Press S to start"
@@ -607,7 +675,7 @@ def main():
                 # Show camera display (main thread — freezes during gripper blocking)
                 window_elapsed = time.perf_counter() - sec_t0
                 current_fps = sec_frames / max(window_elapsed, 1e-3)
-                if args.device == "spacemouse":
+                if args.device in ("spacemouse", "gello"):
                     rec_overlay = "REC - E=end F=discard Q=quit"
                 else:
                     rec_overlay = "REC - Esc=end"

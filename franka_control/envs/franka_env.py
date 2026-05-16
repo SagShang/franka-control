@@ -450,10 +450,10 @@ class FrankaEnv(gym.Env):
         if self.gripper_type == "robotiq":
             self._apply_robotiq_action(action)
         elif self.gripper_mode == "continuous":
-            width = float(action)
+            width = float(np.clip(action, 0.0, self._gripper_max_width))
             ok = self._gripper.move(width=width, speed=GRIPPER_SPEED)
             if not ok:
-                logger.warning("Gripper move(%.4f) failed", width)
+                logger.debug("Gripper move(%.4f) rejected", width)
             else:
                 self._cached_gripper_width = width
 
@@ -499,7 +499,7 @@ class FrankaEnv(gym.Env):
             if ok:
                 self._set_cached_robotiq_position(position)
             else:
-                logger.warning("Robotiq move(%d) failed", position)
+                logger.debug("Robotiq move(%d) rejected", position)
 
         elif self.gripper_mode == "binary":
             command = "open" if action >= GRIPPER_THRESHOLD else "close"

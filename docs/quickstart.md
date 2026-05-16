@@ -242,6 +242,31 @@ Expected output:
 - Logs show SpaceMouse is ready.
 - Left and right buttons command the gripper when the gripper service is running.
 
+Optional GELLO teleoperation:
+
+- GELLO commands absolute FR3 joint positions, so start with the robot and
+  leader arm in a known, comfortable pose.
+- The current GELLO pose is used as the reset target when the session starts.
+- Install the upstream GELLO checkout or pass `--gello-root`.
+
+```bash
+python -m pip install -e /home/shang/gello_software
+
+python -m franka_control.scripts.teleop \
+    --robot-ip 192.168.0.100 \
+    --gripper-host 192.168.0.100 \
+    --device gello \
+    --gello-config /home/shang/gello_software/ros2/src/franka_gello_state_publisher/config/franka_gello_single.yaml \
+    --gello-section SINGLE \
+    --hz 50
+```
+
+If the upstream package is not installed in the active environment, add:
+
+```bash
+--gello-root /home/shang/gello_software
+```
+
 Safety warning before data collection:
 
 - The preview phase still moves the robot.
@@ -273,6 +298,30 @@ Expected output:
 - Press `Esc` to end the episode.
 - Press `Y` or `N` when asked for success/failure.
 - The dataset is written under `data/state_only`.
+
+Collect one GELLO state-only test episode:
+
+```bash
+python -m franka_control.scripts.collect_episodes \
+    --robot-ip 192.168.0.100 \
+    --gripper-host 192.168.0.100 \
+    --repo-id test/gello_state_only \
+    --root data/gello_state_only \
+    --task-name "gello validation" \
+    --device gello \
+    --control-mode joint_abs \
+    --gello-config /home/shang/gello_software/ros2/src/franka_gello_state_publisher/config/franka_gello_single.yaml \
+    --fps 30 \
+    --num-episodes 1 \
+    --no-camera \
+    --display off
+```
+
+Expected output:
+
+- The script enters preview mode.
+- Move the GELLO leader arm to move the robot.
+- Press `s` to start recording, `e` to end, `f` to discard, or `q` to quit.
 
 Collect one camera test episode:
 

@@ -57,6 +57,9 @@ control-machine = [
     "aiofranka",
     "pyrobotiqgripper",
 ]
+gello = [
+    "dynamixel-sdk",
+]
 dev = [
     "pytest",
     "ruff",

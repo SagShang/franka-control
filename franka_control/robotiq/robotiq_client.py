@@ -119,7 +119,10 @@ class RobotiqClient:
             "wait": wait,
         })
         if not resp.get("success"):
-            logger.error("Robotiq move rejected: %s", resp.get("error"))
+            if resp.get("error") == "Robotiq busy":
+                logger.debug("Robotiq move skipped while busy")
+            else:
+                logger.error("Robotiq move rejected: %s", resp.get("error"))
             return False
         if not wait:
             return True
