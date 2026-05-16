@@ -64,9 +64,15 @@ def _spacemouse_help() -> str:
 def _gello_help() -> str:
     return (
         "  GELLO: move leader arm to command absolute FR3 joint positions\n"
-        "  GELLO gripper: continuous configured-gripper control\n"
+        "  GELLO gripper: configured-gripper target control\n"
         "  Keyboard: s=start, e=end, f=discard, q=quit"
     )
+
+
+def _gripper_targets(gripper_type: str) -> tuple[float, float]:
+    if gripper_type == "robotiq":
+        return 0.0, 255.0
+    return 0.08, 0.0
 
 
 def _set_cbreak(fd: int) -> list:
@@ -284,8 +290,8 @@ def main():
     parser.add_argument(
         "--gripper-type",
         choices=["franka_hand", "robotiq"],
-        default="franka_hand",
-        help="Gripper protocol (default: franka_hand)",
+        default="robotiq",
+        help="Gripper protocol (default: robotiq)",
     )
     parser.add_argument("--repo-id", required=True, help="Dataset repo ID")
     parser.add_argument("--root", required=True, help="Local dataset directory")
@@ -326,13 +332,6 @@ def main():
         action="store_true",
         help="Ignore rotation input (3-DOF translation only)",
     )
-    parser.add_argument(
-        "--gripper-mode",
-        default="binary",
-        choices=["binary", "continuous", "none"],
-        help="Gripper control mode (default: binary)",
-    )
-
     # ── SpaceMouse-specific ──────────────────────────────────────
     parser.add_argument(
         "--deadzone",
@@ -408,9 +407,6 @@ def main():
             for name, cam in cameras._cameras.items()
         ]
 
-    gripper_mode = None if args.gripper_mode == "none" else args.gripper_mode
-    env_gripper_mode = "continuous" if args.device == "gello" else gripper_mode
-
     config = CollectionConfig(
         repo_id=args.repo_id,
         root=Path(args.root),
@@ -420,11 +416,11 @@ def main():
         gripper_port=args.gripper_port,
         gripper_type=args.gripper_type,
         control_mode=args.control_mode,
-        gripper_mode=env_gripper_mode or "binary",
         fps=args.fps,
         cameras=cameras_list,
         save_failure=args.save_failure,
     )
+    use_gripper = True
 
     # Create hardware interfaces
     env = FrankaEnv(
@@ -433,7 +429,6 @@ def main():
         gripper_host=config.gripper_host,
         gripper_port=config.gripper_port,
         gripper_type=config.gripper_type,
-        gripper_mode=config.gripper_mode,
     )
 
     if cameras is not None:
@@ -443,13 +438,14 @@ def main():
 
     # Teleop
     action_scale = (args.action_scale_t, args.action_scale_r)
+    gripper_open, gripper_close = _gripper_targets(args.gripper_type)
     if args.device == "gello":
         teleop = GelloTeleop(
             config_path=args.gello_config,
             config_section=args.gello_section,
             port=args.gello_port,
             gello_root=args.gello_root,
-            gripper_mode=env_gripper_mode,
+            use_gripper=use_gripper,
             gripper_output=(
                 "robotiq_position"
                 if args.gripper_type == "robotiq"
@@ -461,7 +457,9 @@ def main():
         teleop_kwargs = {
             "action_scale": action_scale,
             "freeze_rotation": args.freeze_rotation,
-            "gripper_mode": gripper_mode,
+            "use_gripper": use_gripper,
+            "gripper_open_value": gripper_open,
+            "gripper_close_value": gripper_close,
         }
         if args.device == "spacemouse":
             teleop_kwargs["deadzone"] = args.deadzone
@@ -480,7 +478,7 @@ def main():
         "Config: mode=%s, device=%s, fps=%d, gripper=%s/%s, cameras=%s, display=%s, "
         "action_scale=(%.1f, %.1f), freeze_rotation=%s",
         args.control_mode, args.device, args.fps, args.gripper_type,
-        args.gripper_mode,
+        "on" if use_gripper else "off",
         "off" if cameras is None else f"{len(config.cameras)}x", args.display,
         action_scale[0], action_scale[1], args.freeze_rotation,
     )

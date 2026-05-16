@@ -13,12 +13,12 @@ env = FrankaEnv(
     robot_ip="192.168.0.100",
     gripper_host="192.168.0.100",
     action_mode="ee_delta",
-    gripper_mode="binary",
+    gripper_type="robotiq",
 )
 
 obs, info = env.reset()
 
-action = np.array([0.01, 0, 0, 0, 0, 0, 1.0], dtype=np.float32)
+action = np.array([0.01, 0, 0, 0, 0, 0, 255.0], dtype=np.float32)
 obs, reward, terminated, truncated, info = env.step(action)
 print(info["applied_action"])
 

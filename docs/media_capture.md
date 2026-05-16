@@ -68,7 +68,7 @@ docs/assets/spacemouse-teleop-pouring.mp4
 Acceptance:
 
 - The pouring task is visible.
-- The clip demonstrates continuous 6-DoF SpaceMouse control.
+- The clip demonstrates 6-DoF SpaceMouse control.
 - No unsafe or high-speed motion is shown.
 
 Reference command:

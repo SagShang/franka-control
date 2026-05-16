@@ -60,7 +60,6 @@ class TestFeatureBuilder:
             gripper_host="127.0.0.1",
             gripper_type="robotiq",
             control_mode="ee_delta",
-            gripper_mode="continuous",
         )
         features = build_franka_features(config)
 
@@ -111,7 +110,7 @@ class TestCollectionConfig:
             gripper_host="127.0.0.1",
         )
         assert config.control_mode == "joint_abs"
-        assert config.gripper_mode == "binary"
+        assert config.gripper_type == "robotiq"
         assert config.fps == 60
         assert config.save_failure is False
 

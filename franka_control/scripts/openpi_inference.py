@@ -267,11 +267,6 @@ def _parse_args() -> argparse.Namespace:
         choices=["franka_hand", "robotiq"],
         default="robotiq",
     )
-    parser.add_argument(
-        "--gripper-mode",
-        choices=["binary", "continuous"],
-        default="binary",
-    )
     parser.add_argument("--no-gripper", action="store_true")
     parser.add_argument(
         "--control-mode",
@@ -315,26 +310,15 @@ def _parse_args() -> argparse.Namespace:
         help="Seconds to wait for initial camera frames",
     )
     parser.add_argument(
-        "--gripper-close-width",
+        "--gripper-max-width",
         type=float,
-        default=0.01,
-        help="Franka Hand width threshold mapped to closed state",
-    )
-    parser.add_argument(
-        "--robotiq-close-position",
-        type=float,
-        default=128.0,
-        help="Robotiq position threshold mapped to closed state",
+        default=0.08,
+        help="Franka Hand max opening used to normalize gripper state",
     )
     parser.add_argument(
         "--invert-gripper-state",
         action="store_true",
         help="Invert OpenPI gripper value in observation state",
-    )
-    parser.add_argument(
-        "--no-invert-gripper-action",
-        action="store_true",
-        help="Do not map OpenPI 0=open/1=closed into FrankaEnv binary semantics",
     )
     parser.add_argument(
         "--display",
@@ -369,19 +353,13 @@ def main() -> None:
         prompt=args.prompt,
         image_size=_parse_image_size(args.image_size),
         gripper_type=args.gripper_type,
-        gripper_close_width=args.gripper_close_width,
-        robotiq_close_position=args.robotiq_close_position,
+        gripper_max_width=args.gripper_max_width,
         gripper_invert_state=args.invert_gripper_state,
     )
-    invert_gripper_action = (
-        args.gripper_mode == "binary" or args.gripper_type == "franka_hand"
-    )
-    if args.no_invert_gripper_action:
-        invert_gripper_action = False
+    invert_gripper_action = args.gripper_type == "franka_hand"
     action_config = OpenPIActionConfig(
         mode=args.control_mode,
         include_gripper=not args.no_gripper,
-        binary_gripper=args.gripper_mode == "binary",
         gripper_invert=invert_gripper_action,
     )
 
@@ -392,7 +370,6 @@ def main() -> None:
         gripper_host=None if args.no_gripper else (args.gripper_host or args.robot_ip),
         gripper_port=args.gripper_port,
         gripper_type=args.gripper_type,
-        gripper_mode=args.gripper_mode,
         action_mode=args.control_mode,
     )
     cameras = None

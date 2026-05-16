@@ -16,9 +16,8 @@ class OpenPIObservationConfig:
     wrist_camera: str = "wrist_camera"
     prompt: str = "manipulation"
     image_size: tuple[int, int] | None = None
-    gripper_type: str = "franka_hand"
-    gripper_close_width: float = 0.01
-    robotiq_close_position: float = 128.0
+    gripper_type: str = "robotiq"
+    gripper_max_width: float = 0.08
     gripper_invert_state: bool = False
 
 
@@ -28,9 +27,7 @@ class OpenPIActionConfig:
 
     mode: str = "joint_abs"
     include_gripper: bool = True
-    binary_gripper: bool = True
-    gripper_threshold: float = 0.5
-    gripper_invert: bool = True
+    gripper_invert: bool = False
 
 
 def make_openpi_observation(
@@ -89,12 +86,9 @@ def openpi_action_to_env_action(
         gripper = float(np.clip(action[robot_dim], 0.0, 1.0))
         if config.gripper_invert:
             gripper = 1.0 - gripper
-        if config.binary_gripper:
-            gripper = 1.0 if gripper > config.gripper_threshold else 0.0
-        else:
-            low = float(env_action_low[gripper_index])
-            high = float(env_action_high[gripper_index])
-            gripper = low + gripper * (high - low)
+        low = float(env_action_low[gripper_index])
+        high = float(env_action_high[gripper_index])
+        gripper = low + gripper * (high - low)
         env_action[gripper_index] = gripper
 
     return np.clip(env_action, env_action_low, env_action_high).astype(np.float32)
@@ -109,15 +103,14 @@ def _openpi_gripper_state(
 
     position = float(np.asarray(robot_obs["gripper_position"]).reshape(-1)[0])
     if config.gripper_type == "robotiq":
-        closed = 1.0 if position >= config.robotiq_close_position else 0.0
-        if config.gripper_invert_state:
-            closed = 1.0 - closed
-        return np.asarray([closed], dtype=np.float32)
+        value = np.clip(position / 255.0, 0.0, 1.0)
+    else:
+        max_width = max(float(config.gripper_max_width), np.finfo(np.float32).eps)
+        value = 1.0 - np.clip(position / max_width, 0.0, 1.0)
 
-    closed = 1.0 if position <= config.gripper_close_width else 0.0
     if config.gripper_invert_state:
-        closed = 1.0 - closed
-    return np.asarray([closed], dtype=np.float32)
+        value = 1.0 - value
+    return np.asarray([value], dtype=np.float32)
 
 
 def _robot_action_dim(mode: str) -> int:

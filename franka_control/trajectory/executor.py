@@ -24,6 +24,30 @@ from franka_control.trajectory.waypoints import GripperAction, WaypointStore
 logger = logging.getLogger(__name__)
 
 
+def gripper_action_value(env, action_name: str) -> float:
+    """Map a route gripper event to the active FrankaEnv gripper units."""
+    if action_name not in {"open", "close"}:
+        raise ValueError(f"Unknown gripper action {action_name!r}")
+    if getattr(env, "gripper_type", "franka_hand") == "robotiq":
+        return 0.0 if action_name == "open" else 255.0
+    max_width = float(getattr(env, "_gripper_max_width", 0.08))
+    return max_width if action_name == "open" else 0.0
+
+
+def current_gripper_value(env) -> float:
+    """Return the current cached FrankaEnv gripper target units."""
+    if getattr(env, "gripper_type", "franka_hand") == "robotiq":
+        return float(getattr(env, "_cached_robotiq_position", 0.0))
+
+    return float(
+        getattr(
+            env,
+            "_cached_gripper_width",
+            getattr(env, "_gripper_max_width", 0.08),
+        )
+    )
+
+
 @dataclass
 class RouteSegment:
     """One planning segment produced by split_route().
@@ -194,7 +218,7 @@ def split_route(
 def execute_trajectory(
     env,
     trajectory: Trajectory,
-    gripper_value: float = 1.0,
+    gripper_value: float | None = None,
     time_scale: float = 1.0,
 ) -> dict:
     """Execute one trajectory segment point by point.
@@ -203,30 +227,27 @@ def execute_trajectory(
     The gripper value stays constant throughout this segment.
 
     Args:
-        env: Connected FrankaEnv (joint_abs + binary gripper mode).
+        env: Connected FrankaEnv (joint_abs mode).
         trajectory: Planned trajectory to execute.
-        gripper_value: Gripper action value for binary mode.
-            1.0 = open, 0.0 = close. Only valid for binary gripper mode.
+        gripper_value: Optional gripper target in the active FrankaEnv units.
+            When None, the current cached target is used.
         time_scale: Factor to stretch execution time.
             1.0 = planned speed, 2.0 = half speed, 0.5 = double speed.
 
     Returns:
         Final observation dict.
     """
-    if env.use_gripper and env.gripper_mode != "binary":
-        raise ValueError(
-            f"execute_trajectory requires binary gripper mode, "
-            f"got '{env.gripper_mode}'"
-        )
     n = len(trajectory.timestamps)
-    gripper_dim = 1 if env.use_gripper else 0
+    include_gripper = env.use_gripper
+    if include_gripper and gripper_value is None:
+        gripper_value = current_gripper_value(env)
 
     t_start = time.perf_counter()
     obs = None
 
     for i in range(n):
         # Build action
-        if gripper_dim:
+        if include_gripper:
             action = np.concatenate(
                 [trajectory.positions[i], [gripper_value]]
             ).astype(np.float32)
@@ -266,7 +287,7 @@ def execute_route(
     before any trajectory begins (pre-route action).
 
     Args:
-        env: Connected FrankaEnv (joint_abs + binary gripper mode).
+        env: Connected FrankaEnv (joint_abs mode).
         store: WaypointStore with loaded data.
         route_name: Name of the route to execute.
         planner: TrajectoryPlanner instance (created if None).
@@ -284,17 +305,17 @@ def execute_route(
         )
 
     result = split_route(store, route_name)
-    gripper_value = 1.0  # default: open
+    gripper_value = current_gripper_value(env) if env.use_gripper else None
 
     logger.info("Executing route '%s': %d segments", route_name, len(result.segments))
 
     # Pre-route gripper action (at route start, before any motion)
     if result.pre_gripper_action is not None and env.use_gripper:
-        gripper_value = (
-            0.0 if result.pre_gripper_action.action == "close" else 1.0
+        gripper_value = gripper_action_value(
+            env, result.pre_gripper_action.action
         )
-        # Robot is at route start position (set by env.move_to in caller)
-        # Send one step to trigger gripper via binary mode
+        # Robot is at route start position (set by env.move_to in caller).
+        # Send one step to trigger the gripper event.
         first_wp_name = store.get_route(route_name).waypoints[0]
         first_qpos = store.get_waypoint(first_wp_name).joint_angles
         action = np.concatenate(
@@ -318,11 +339,9 @@ def execute_route(
 
         # Execute gripper action (blocking)
         if segment.gripper_action is not None and env.use_gripper:
-            gripper_value = (
-                0.0 if segment.gripper_action.action == "close" else 1.0
-            )
-            # Robot is stationary at endpoint; send one step to trigger
-            # blocking gripper action via binary mode
+            gripper_value = gripper_action_value(env, segment.gripper_action.action)
+            # Robot is stationary at endpoint; send one step to trigger the
+            # gripper event in the active gripper units.
             action = np.concatenate(
                 [traj.positions[-1], [gripper_value]]
             ).astype(np.float32)

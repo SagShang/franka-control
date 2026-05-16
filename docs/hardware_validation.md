@@ -160,7 +160,7 @@ Record date, operator, and notes before marking any item complete.
 | RobotServer starts | `[x]` | 2026-04-29 | `python -m franka_control.robot --fci-ip <FRANKA_FCI_IP> --log-level DEBUG`; server listened on port `5555` |
 | GripperServer starts | `[x]` | 2026-04-29 | `python -m franka_control.gripper --robot-ip <FRANKA_FCI_IP>`; gripper connected and listened on port `5556` |
 | Latency measurement works | `[x]` | 2026-04-29 | `n=100`; `set(ee_desired)` fire-and-forget send latency < 0.02 ms; sustained send throughput ~27 kHz |
-| Keyboard teleop works at low speed | `[x]` | 2026-04-29 | `--action-scale-t 0.5 --action-scale-r 1.0 --hz 50`; works, but continuous acceleration can still trigger abort, so use lower scales for demos |
+| Keyboard teleop works at low speed | `[x]` | 2026-04-29 | `--action-scale-t 0.5 --action-scale-r 1.0 --hz 50`; works, but fast acceleration can still trigger abort, so use lower scales for demos |
 | SpaceMouse teleop works at low speed | `[x]` | 2026-04-29 | 3Dconnexion SpaceMouse Compact with `--action-scale-t 0.5 --action-scale-r 1.0 --hz 50`; permissions OK |
 | Waypoint collection works | `[x]` | 2026-04-29 | Saved `test_output/test_waypoints.yaml`; route `test-route-2` created from `test-2-1`, `test-2-2`, `test-2-3` |
 | Trajectory dry-run works | `[x]` | 2026-04-29 | Reported successful for `test-route-2` |
@@ -210,7 +210,7 @@ python -m franka_control.scripts.teleop \
     --hz 50
 ```
 
-At these scales, continuous acceleration can still trigger robot abort. For
+At these scales, fast acceleration can still trigger robot abort. For
 public demo capture and first-run user examples, start with conservative
 `--action-scale-t` and `--action-scale-r` values and reduce them further if the
 motion feels fast.

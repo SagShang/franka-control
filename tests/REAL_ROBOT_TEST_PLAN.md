@@ -8,7 +8,7 @@
 - Cameras: RealSense cameras connected (optional for some tests)
 
 ## Test 1: State Streaming During Blocking Operations
-**Purpose:** Verify RobotServer streams state continuously during move_to()
+**Purpose:** Verify RobotServer streams state during move_to()
 
 **Steps:**
 1. Start RobotServer on control machine
@@ -81,7 +81,7 @@
 **Purpose:** Verify gripper records command values (not sensor feedback)
 
 **Steps:**
-1. Run joint_abs collection with binary gripper
+1. Run joint_abs collection with Robotiq gripper
 2. During episode, press gripper close button (SpaceMouse button 0 or keyboard Space)
 3. Immediately check action values in real-time (add print statement if needed)
 4. After episode, inspect Parquet file:
@@ -92,9 +92,9 @@
    ```
 
 **Expected:**
-- Action gripper column shows discrete values: 0.0 (close) and 1.0 (open)
+- Action gripper column records Robotiq target positions: 0.0 (open) and 255.0 (close)
 - Values change immediately when button pressed (not delayed by grasp duration)
-- No intermediate values like 0.5 or 0.042
+- Franka Hand datasets record width in meters instead
 
 **Pass Criteria:** ✅ Gripper action is command value, not sensor feedback
 

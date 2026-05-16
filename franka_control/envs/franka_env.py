@@ -15,7 +15,7 @@ caller's responsibility (or add wrappers like TimeLimit).
 
 Usage:
     env = FrankaEnv(robot_ip="192.168.0.2",
-                    action_mode="joint_delta", gripper_mode="continuous")
+                    action_mode="joint_delta")
     obs, _ = env.reset()
     action = policy(obs)
     obs, reward, done, truncated, info = env.step(action)
@@ -69,7 +69,6 @@ EE_DELTA_LIMIT = np.array([0.05, 0.05, 0.05, 0.3, 0.3, 0.3])
 GRIPPER_SPEED = 0.1       # fixed speed [m/s]
 GRIPPER_FORCE = 40.0      # default grasp force [N]
 GRIPPER_MAX_WIDTH = 0.08  # max width [m]
-GRIPPER_THRESHOLD = 0.5   # binary mode threshold
 ROBOTIQ_SPEED = 255       # Robotiq register value
 ROBOTIQ_FORCE = 128       # Robotiq register value
 ROBOTIQ_MAX_WIDTH = 0.085 # 2F-85 observation width [m]
@@ -98,8 +97,8 @@ class FrankaEnv(gym.Env):
         gripper_port: Gripper server ZMQ port.
         gripper_type: franka_hand or robotiq.
         action_mode: One of joint_abs, joint_delta, ee_abs, ee_delta.
-        gripper_mode: continuous or binary (only when gripper_host is set).
-            For robotiq continuous mode uses position bits 0..255.
+        gripper action: target position in active gripper units. Franka Hand
+            uses width in meters; Robotiq uses native position bits 0..255.
         home_qpos: Home joint position for reset [rad].
     """
 
@@ -112,9 +111,8 @@ class FrankaEnv(gym.Env):
         gripper_host: Optional[str] = None,
         gripper_port: int = 5556,
         state_stream_port: int = DEFAULT_STATE_STREAM_PORT,
-        gripper_type: str = "franka_hand",
+        gripper_type: str = "robotiq",
         action_mode: str = "joint_abs",
-        gripper_mode: str = "continuous",
         grasp_force: float = GRIPPER_FORCE,
         robotiq_speed: int = ROBOTIQ_SPEED,
         robotiq_force: int = ROBOTIQ_FORCE,
@@ -138,7 +136,6 @@ class FrankaEnv(gym.Env):
                 f"got '{gripper_type}'"
             )
         self.gripper_type = gripper_type
-        self.gripper_mode = gripper_mode
         self._grasp_force = grasp_force
         self._robotiq_speed = int(robotiq_speed)
         self._robotiq_force = int(robotiq_force)
@@ -190,7 +187,7 @@ class FrankaEnv(gym.Env):
         self._gripper: Optional[GripperClient | RobotiqClient] = None
         self._gripper_host = gripper_host
         self._gripper_port = gripper_port
-        self._last_gripper_command: Optional[str] = None
+        self._last_gripper_target: Optional[float] = None
         self._gripper_max_width = GRIPPER_MAX_WIDTH
         self._cached_gripper_width = 0.0
         self._cached_robotiq_position = ROBOTIQ_OPEN_POSITION
@@ -267,7 +264,7 @@ class FrankaEnv(gym.Env):
         Args:
             action: Physical-unit action array.
                 Robot part: see action_space bounds (rad, m, etc.)
-                Gripper part: [0, max_width] or [0, 1] depending on mode
+                Gripper part: target position in active gripper units.
 
         Returns:
             (observation, reward, terminated, truncated, info)
@@ -439,94 +436,49 @@ class FrankaEnv(gym.Env):
     # ── Gripper ──────────────────────────────────────────────────
 
     def _apply_gripper_action(self, action: float) -> None:
-        """Execute gripper action.
-
-        continuous: send target width every step (width can change).
-        binary: edge-triggered — only send on open↔close transitions.
-        """
+        """Execute gripper target in active gripper units."""
         if self._gripper is None:
             return
 
         if self.gripper_type == "robotiq":
             self._apply_robotiq_action(action)
-        elif self.gripper_mode == "continuous":
-            width = float(np.clip(action, 0.0, self._gripper_max_width))
-            ok = self._gripper.move(width=width, speed=GRIPPER_SPEED)
-            if not ok:
-                logger.debug("Gripper move(%.4f) rejected", width)
-            else:
-                self._cached_gripper_width = width
+            return
 
-        elif self.gripper_mode == "binary":
-            command = "open" if action >= GRIPPER_THRESHOLD else "close"
-            if command == self._last_gripper_command:
-                return
-
-            if command == "open":
-                ok = self._gripper.open(
-                    width=self._gripper_max_width, speed=GRIPPER_SPEED
-                )
-            else:
-                ok = self._gripper.grasp(
-                    width=0.0, speed=GRIPPER_SPEED, force=self._grasp_force
-                )
-
-            # Update state regardless — grasp() returns False when the object
-            # prevents fingers from reaching target width, but the gripper is
-            # still holding the object. Not updating _last_gripper_command
-            # would cause repeated grasp() calls every step.
-            self._last_gripper_command = command
-            if ok:
-                self._cached_gripper_width = (
-                    self._gripper_max_width if command == "open" else 0.0
-                )
-            else:
-                logger.warning("Gripper %s failed", command)
+        width = float(np.clip(action, 0.0, self._gripper_max_width))
+        if (
+            self._last_gripper_target is not None
+            and np.isclose(width, self._last_gripper_target, atol=1e-4)
+        ):
+            return
+        ok = self._gripper.move(width=width, speed=GRIPPER_SPEED)
+        if ok:
+            self._last_gripper_target = width
+            self._cached_gripper_width = width
+        else:
+            logger.debug("Gripper move(%.4f) rejected", width)
 
     def _apply_robotiq_action(self, action: float) -> None:
         """Execute Robotiq action using native position/speed/force units."""
         if self._gripper is None:
             return
 
-        if self.gripper_mode == "continuous":
-            position = int(round(float(action)))
-            ok = self._gripper.move(
-                position=position,
-                speed=self._robotiq_speed,
-                force=self._robotiq_force,
-                wait=False,
-            )
-            if ok:
-                self._set_cached_robotiq_position(position)
-            else:
-                logger.debug("Robotiq move(%d) rejected", position)
-
-        elif self.gripper_mode == "binary":
-            command = "open" if action >= GRIPPER_THRESHOLD else "close"
-            if command == self._last_gripper_command:
-                return
-
-            if command == "open":
-                ok = self._gripper.open(
-                    speed=self._robotiq_speed,
-                    force=self._robotiq_force,
-                )
-                target = self._robotiq_open_position
-            else:
-                ok = self._gripper.close(
-                    speed=self._robotiq_speed,
-                    force=self._robotiq_force,
-                )
-                target = self._robotiq_closed_position
-
-            self._last_gripper_command = command
-            if ok:
-                self._set_cached_robotiq_position(target)
-            else:
-                logger.warning("Robotiq %s failed", command)
+        position = int(round(float(np.clip(action, 0.0, 255.0))))
+        if self._last_gripper_target == position:
+            return
+        ok = self._gripper.move(
+            position=position,
+            speed=self._robotiq_speed,
+            force=self._robotiq_force,
+            wait=False,
+        )
+        if ok:
+            self._last_gripper_target = float(position)
+            self._set_cached_robotiq_position(position)
+        else:
+            logger.debug("Robotiq move(%d) rejected", position)
 
     def _reset_gripper(self) -> None:
-        """Open gripper for reset. Failure is non-fatal (warning only)."""
+        """Open gripper for reset."""
         if self._gripper is None:
             return
         if self.gripper_type == "robotiq":
@@ -535,20 +487,20 @@ class FrankaEnv(gym.Env):
                 force=self._robotiq_force,
             )
             if ok:
-                self._last_gripper_command = "open"
                 self._set_cached_robotiq_position(self._robotiq_open_position)
+                self._last_gripper_target = float(self._robotiq_open_position)
             else:
-                logger.warning("Robotiq reset (open) failed")
+                raise RuntimeError("Robotiq reset open failed")
             return
 
         ok = self._gripper.open(
             width=self._gripper_max_width, speed=GRIPPER_SPEED
         )
         if ok:
-            self._last_gripper_command = "open"
             self._cached_gripper_width = self._gripper_max_width
+            self._last_gripper_target = self._gripper_max_width
         else:
-            logger.warning("Gripper reset (open) failed")
+            raise RuntimeError("Gripper reset open failed")
 
     # ── State and observation ────────────────────────────────────
 
@@ -608,12 +560,14 @@ class FrankaEnv(gym.Env):
     # ── Action space construction ────────────────────────────────
 
     def _build_action_space(self) -> None:
-        """Build action_space from current action_mode and gripper_mode."""
+        """Build action_space from current action_mode and gripper type."""
         robot_low, robot_high = self._get_robot_action_bounds()
         gripper_low, gripper_high = self._get_gripper_action_bounds()
+        low = np.concatenate([robot_low, gripper_low]).astype(np.float32)
+        high = np.concatenate([robot_high, gripper_high]).astype(np.float32)
         self.action_space = gym.spaces.Box(
-            low=np.concatenate([robot_low, gripper_low]),
-            high=np.concatenate([robot_high, gripper_high]),
+            low=low,
+            high=high,
             dtype=np.float32,
         )
 
@@ -632,12 +586,9 @@ class FrankaEnv(gym.Env):
         """Return (low, high) arrays for gripper action dimension."""
         if not self.use_gripper:
             return np.array([]), np.array([])
-        if self.gripper_type == "robotiq" and self.gripper_mode == "continuous":
+        if self.gripper_type == "robotiq":
             return np.array([0.0]), np.array([255.0])
-        if self.gripper_mode == "continuous":
-            return np.array([0.0]), np.array([GRIPPER_MAX_WIDTH])
-        else:  # binary
-            return np.array([0.0]), np.array([1.0])
+        return np.array([0.0]), np.array([GRIPPER_MAX_WIDTH])
 
     # ── Internal helpers ─────────────────────────────────────────
 
@@ -646,20 +597,24 @@ class FrankaEnv(gym.Env):
             self._gripper = RobotiqClient(
                 self._gripper_host, self._gripper_port
             )
-            self._gripper.activate(reset=False, start=True, open_after=False)
+            if not self._gripper.activate(reset=False, start=True, open_after=False):
+                raise RuntimeError("Robotiq activation failed")
             state = self._gripper.get_state()
-            if state:
-                self._cached_robotiq_position = int(
-                    state.get("position", self._cached_robotiq_position)
+            if not state:
+                raise RuntimeError("Robotiq state unavailable after activation")
+            self._cached_robotiq_position = int(
+                state.get("position", self._cached_robotiq_position)
+            )
+            self._last_gripper_target = float(self._cached_robotiq_position)
+            self._robotiq_max_width = float(
+                state.get("max_width_m", self._robotiq_max_width)
+            )
+            self._cached_gripper_width = float(
+                state.get("width_m", self._robotiq_width_from_position(
+                    self._cached_robotiq_position
                 )
-                self._robotiq_max_width = float(
-                    state.get("max_width_m", self._robotiq_max_width)
                 )
-                self._cached_gripper_width = float(
-                    state.get("width_m", self._robotiq_width_from_position(
-                        self._cached_robotiq_position
-                    ))
-                )
+            )
             logger.info(
                 "Robotiq connected. Position: %d",
                 self._cached_robotiq_position,
@@ -667,11 +622,14 @@ class FrankaEnv(gym.Env):
             return
 
         self._gripper = GripperClient(self._gripper_host, self._gripper_port)
-        self._gripper.homing()
+        if not self._gripper.homing():
+            raise RuntimeError("Franka Hand homing failed")
         state = self._gripper.get_state()
-        if state:
-            self._gripper_max_width = state.get("max_width", GRIPPER_MAX_WIDTH)
-            self._cached_gripper_width = state.get("width", 0.0)
+        if not state:
+            raise RuntimeError("Franka Hand state unavailable after homing")
+        self._gripper_max_width = state.get("max_width", GRIPPER_MAX_WIDTH)
+        self._cached_gripper_width = state.get("width", 0.0)
+        self._last_gripper_target = self._cached_gripper_width
         logger.info("Franka Hand connected. Max width: %.4f m",
                     self._gripper_max_width)
 

@@ -60,4 +60,4 @@ scripts/
 
 1. **waypoint_indices 不能用 name 做 key** → 已解决：使用 `list[int]`，长度 = route 中 waypoint 数量
 2. **TOPPRA 中间点不停** → 已解决：通过 `split_route()` 在夹爪动作点拆分为独立段，每段 rest-to-rest
-3. **夹爪事件要绕过 binary 防抖** → 已解决：简化设计，所有夹爪动作通过 `env.step()` 执行，利用 binary 模式的天然防抖。段间机器人停止后发送一步触发夹爪动作
+3. **夹爪事件由 `env.step()` 统一触发** → 已解决：段间机器人停止后发送一步夹爪目标位置，保持轨迹执行逻辑简单

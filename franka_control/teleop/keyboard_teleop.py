@@ -45,14 +45,18 @@ class KeyboardTeleop:
     Args:
         action_scale: Max translation/rotation speed used by the caller.
         freeze_rotation: If True, zero out the rotation component.
-        gripper_mode: "binary" or None.
+        use_gripper: If True, append a gripper target selected by Space/Enter.
+        gripper_open_value: Target value emitted when Enter is pressed.
+        gripper_close_value: Target value emitted when Space is pressed.
     """
 
     def __init__(
         self,
         action_scale: tuple[float, float] = DEFAULT_ACTION_SCALE,
         freeze_rotation: bool = False,
-        gripper_mode: Optional[str] = "binary",
+        use_gripper: bool = True,
+        gripper_open_value: float = 1.0,
+        gripper_close_value: float = 0.0,
     ):
         if keyboard is None:
             raise ImportError(
@@ -61,10 +65,12 @@ class KeyboardTeleop:
 
         self._action_scale = action_scale
         self._freeze_rotation = freeze_rotation
-        self._gripper_mode = gripper_mode
+        self._use_gripper = bool(use_gripper)
+        self._gripper_open_value = float(gripper_open_value)
+        self._gripper_close_value = float(gripper_close_value)
         self._lock = threading.Lock()
         self._pressed_keys: set[object] = set()
-        self._last_gripper = 1.0
+        self._last_gripper = self._gripper_open_value
         self._close_pressed = False
         self._open_pressed = False
         self._exit_requested = False
@@ -124,15 +130,15 @@ class KeyboardTeleop:
 
         gripper = None
         gripper_intervened = False
-        if self._gripper_mode == "binary":
+        if self._use_gripper:
             close_now = keyboard.Key.space in pressed_keys
             open_now = keyboard.Key.enter in pressed_keys
 
             if close_now and not self._close_pressed:
-                self._last_gripper = 0.0
+                self._last_gripper = self._gripper_close_value
                 gripper_intervened = True
             elif open_now and not self._open_pressed:
-                self._last_gripper = 1.0
+                self._last_gripper = self._gripper_open_value
                 gripper_intervened = True
 
             self._close_pressed = close_now
@@ -183,4 +189,4 @@ class KeyboardTeleop:
     @property
     def action_dim(self) -> int:
         """Return expected action dimension (6 + optional gripper)."""
-        return 7 if self._gripper_mode else 6
+        return 7 if self._use_gripper else 6

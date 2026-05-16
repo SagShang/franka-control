@@ -76,20 +76,67 @@ def test_make_openpi_observation_uses_camera_mapping_and_gripper_state() -> None
     assert obs["state"][7] == 1.0
 
 
-def test_openpi_binary_gripper_action_is_mapped_to_env_semantics() -> None:
+def test_make_openpi_observation_normalizes_robotiq_position() -> None:
+    robot_obs = {
+        "joint_pos": np.arange(7, dtype=np.float32),
+        "gripper_position": np.array([127.5], dtype=np.float32),
+    }
+    images = {
+        "base": np.ones((4, 5, 3), dtype=np.uint8),
+        "wrist": np.zeros((4, 5, 3), dtype=np.uint8),
+    }
+
+    obs = make_openpi_observation(
+        robot_obs,
+        images,
+        OpenPIObservationConfig(
+            high_camera="base",
+            wrist_camera="wrist",
+            gripper_type="robotiq",
+        ),
+    )
+
+    assert obs["state"][7] == 0.5
+
+
+def test_make_openpi_observation_maps_franka_width_to_closed_fraction() -> None:
+    robot_obs = {
+        "joint_pos": np.arange(7, dtype=np.float32),
+        "gripper_position": np.array([0.02], dtype=np.float32),
+    }
+    images = {
+        "base": np.ones((4, 5, 3), dtype=np.uint8),
+        "wrist": np.zeros((4, 5, 3), dtype=np.uint8),
+    }
+
+    obs = make_openpi_observation(
+        robot_obs,
+        images,
+        OpenPIObservationConfig(
+            high_camera="base",
+            wrist_camera="wrist",
+            gripper_type="franka_hand",
+            gripper_max_width=0.08,
+        ),
+    )
+
+    assert obs["state"][7] == 0.75
+
+
+def test_openpi_gripper_action_scales_to_env_bounds() -> None:
     low = np.array([-10.0] * 7 + [0.0], dtype=np.float32)
-    high = np.array([10.0] * 7 + [1.0], dtype=np.float32)
-    action = np.array([0, 1, 2, 3, 4, 5, 6, 1.0], dtype=np.float32)
+    high = np.array([10.0] * 7 + [255.0], dtype=np.float32)
+    action = np.array([0, 1, 2, 3, 4, 5, 6, 0.25], dtype=np.float32)
 
     env_action = openpi_action_to_env_action(
         action,
         low,
         high,
-        OpenPIActionConfig(mode="joint_abs"),
+        OpenPIActionConfig(mode="joint_abs", gripper_invert=False),
     )
 
     np.testing.assert_array_equal(env_action[:7], action[:7])
-    assert env_action[7] == 0.0
+    assert env_action[7] == 63.75
 
 
 def test_openpi_action_can_skip_gripper() -> None:
@@ -107,20 +154,16 @@ def test_openpi_action_can_skip_gripper() -> None:
     np.testing.assert_allclose(env_action, high)
 
 
-def test_openpi_continuous_gripper_scales_to_env_bounds() -> None:
+def test_openpi_gripper_action_can_invert_for_franka_hand_width() -> None:
     low = np.array([-10.0] * 7 + [0.0], dtype=np.float32)
-    high = np.array([10.0] * 7 + [255.0], dtype=np.float32)
-    action = np.array([0, 1, 2, 3, 4, 5, 6, 0.25], dtype=np.float32)
+    high = np.array([10.0] * 7 + [0.08], dtype=np.float32)
+    action = np.array([0, 1, 2, 3, 4, 5, 6, 1.0], dtype=np.float32)
 
     env_action = openpi_action_to_env_action(
         action,
         low,
         high,
-        OpenPIActionConfig(
-            mode="joint_abs",
-            binary_gripper=False,
-            gripper_invert=False,
-        ),
+        OpenPIActionConfig(mode="joint_abs", gripper_invert=True),
     )
 
-    assert env_action[7] == 63.75
+    assert env_action[7] == 0.0

@@ -20,7 +20,7 @@
 **2. FrankaEnv**
 - 实际文件：`franka_control/envs/franka_env.py`（511 行）
 - 4 种 action_mode：`joint_abs` / `joint_delta` / `ee_abs` / `ee_delta`
-- 2 种 gripper_mode：`continuous` / `binary`
+- 夹爪 action 使用目标位置；Franka Hand 用米，Robotiq 用原生 0..255 位置值
 - 延迟连接：`connect()` 方法，`__init__` 不触发硬件
 - 物理单位：动作和观测均使用真实物理单位，无归一化
 

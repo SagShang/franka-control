@@ -4,8 +4,8 @@ This replays ``action`` from a collected LeRobot dataset:
     action[:7] -> Franka joint_abs q_desired [rad]
     action[7]  -> gripper target
 
-For Robotiq continuous datasets, the gripper target is the native 0..255
-position where 0 is open and 255 is closed.
+For Robotiq datasets, the gripper target is the native 0..255 position where
+0 is open and 255 is closed.
 """
 
 from __future__ import annotations

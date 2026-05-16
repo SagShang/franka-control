@@ -1,6 +1,6 @@
 """CameraManager — multi-RealSense camera reader.
 
-Each camera runs in a dedicated thread, continuously reading frames
+Each camera runs in a dedicated thread, repeatedly reading frames
 into a Queue(1) (always keeps the latest frame). The main thread
 calls read() to get all cameras' latest frames synchronously.
 

@@ -60,8 +60,8 @@ def main():
     parser.add_argument(
         "--gripper-type",
         choices=["franka_hand", "robotiq"],
-        default="franka_hand",
-        help="Gripper protocol (default: franka_hand)",
+        default="robotiq",
+        help="Gripper protocol (default: robotiq)",
     )
     parser.add_argument(
         "--waypoints", default="config/waypoints.yaml",
@@ -154,7 +154,6 @@ def main():
         gripper_port=args.gripper_port,
         gripper_type=args.gripper_type,
         action_mode="joint_abs",
-        gripper_mode="binary" if use_gripper else "continuous",
     )
 
     try:

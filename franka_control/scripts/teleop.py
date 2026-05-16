@@ -41,9 +41,15 @@ def _gello_help() -> str:
     return (
         "GELLO controls:\n"
         "  Move the GELLO leader arm to command absolute FR3 joint positions\n"
-        "  GELLO gripper maps continuously to the configured gripper\n"
+        "  GELLO gripper maps to the configured gripper target\n"
         "  Ctrl+C: exit"
     )
+
+
+def _gripper_targets(gripper_type: str) -> tuple[float, float]:
+    if gripper_type == "robotiq":
+        return 0.0, 255.0
+    return 0.08, 0.0
 
 
 def main():
@@ -55,8 +61,8 @@ def main():
     parser.add_argument(
         "--gripper-type",
         choices=["franka_hand", "robotiq"],
-        default="franka_hand",
-        help="Gripper protocol (default: franka_hand)",
+        default="robotiq",
+        help="Gripper protocol (default: robotiq)",
     )
     parser.add_argument(
         "--device",
@@ -149,18 +155,16 @@ def main():
         gripper_port=args.gripper_port,
         gripper_type=args.gripper_type,
         action_mode=control_mode,
-        gripper_mode="continuous" if args.device == "gello" else (
-            "binary" if use_gripper else "continuous"
-        ),
     )
 
+    gripper_open, gripper_close = _gripper_targets(args.gripper_type)
     if args.device == "gello":
         teleop = GelloTeleop(
             config_path=args.gello_config,
             config_section=args.gello_section,
             port=args.gello_port,
             gello_root=args.gello_root,
-            gripper_mode="continuous" if use_gripper else None,
+            use_gripper=use_gripper,
             gripper_output=(
                 "robotiq_position"
                 if args.gripper_type == "robotiq"
@@ -172,7 +176,9 @@ def main():
         teleop = teleop_cls(
             action_scale=(args.action_scale_t, args.action_scale_r),
             freeze_rotation=args.freeze_rotation,
-            gripper_mode="binary" if use_gripper else None,
+            use_gripper=use_gripper,
+            gripper_open_value=gripper_open,
+            gripper_close_value=gripper_close,
         )
 
     step_count = 0

@@ -64,6 +64,12 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 
+def _gripper_targets(gripper_type: str) -> tuple[float, float]:
+    if gripper_type == "robotiq":
+        return 0.0, 255.0
+    return 0.08, 0.0
+
+
 # ── Terminal helpers ────────────────────────────────────────────
 
 
@@ -112,8 +118,8 @@ def main():
     parser.add_argument(
         "--gripper-type",
         choices=["franka_hand", "robotiq"],
-        default="franka_hand",
-        help="Gripper protocol (default: franka_hand)",
+        default="robotiq",
+        help="Gripper protocol (default: robotiq)",
     )
     parser.add_argument(
         "--waypoints", default="config/waypoints.yaml",
@@ -161,14 +167,16 @@ def main():
         gripper_port=args.gripper_port,
         gripper_type=args.gripper_type,
         action_mode="ee_delta",
-        gripper_mode="binary" if use_gripper else "continuous",
     )
 
     use_keyboard = args.device == "keyboard"
     teleop_cls = KeyboardTeleop if use_keyboard else SpaceMouseTeleop
+    gripper_open, gripper_close = _gripper_targets(args.gripper_type)
     teleop = teleop_cls(
         action_scale=(args.action_scale_t, args.action_scale_r),
-        gripper_mode="binary" if use_gripper else None,
+        use_gripper=use_gripper,
+        gripper_open_value=gripper_open,
+        gripper_close_value=gripper_close,
     )
 
     # Command key mappings: spacemouse uses letters, keyboard uses numbers

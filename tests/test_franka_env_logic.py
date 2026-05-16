@@ -26,25 +26,36 @@ def test_action_space_dimensions_with_and_without_gripper():
     env_with_gripper = FrankaEnv(
         robot_ip="127.0.0.1",
         gripper_host="127.0.0.1",
+        gripper_type="franka_hand",
         action_mode="joint_abs",
-        gripper_mode="binary",
     )
     assert env_with_gripper.action_space.shape == (8,)
     assert env_with_gripper.action_space.low[-1] == 0.0
-    assert env_with_gripper.action_space.high[-1] == 1.0
+    assert env_with_gripper.action_space.high[-1] == 0.08
 
     env_with_robotiq = FrankaEnv(
         robot_ip="127.0.0.1",
         gripper_host="127.0.0.1",
         gripper_type="robotiq",
         action_mode="ee_delta",
-        gripper_mode="continuous",
     )
     assert env_with_robotiq.action_space.shape == (7,)
     assert env_with_robotiq.action_space.low[-1] == 0.0
     assert env_with_robotiq.action_space.high[-1] == 255.0
     assert "gripper_position" in env_with_robotiq.observation_space.spaces
     assert "robotiq_position" not in env_with_robotiq.observation_space.spaces
+
+
+def test_default_gripper_is_robotiq_when_enabled():
+    env = FrankaEnv(
+        robot_ip="127.0.0.1",
+        gripper_host="127.0.0.1",
+        action_mode="ee_delta",
+    )
+
+    assert env.gripper_type == "robotiq"
+    assert env.action_space.low[-1] == 0.0
+    assert env.action_space.high[-1] == 255.0
 
 
 def test_invalid_gripper_type_raises_before_hardware_connection():
@@ -66,18 +77,16 @@ def test_joint_targets_clip_to_fr3_joint_limits():
     assert np.allclose(low, JOINT_LIMIT_LOW)
 
 
-def test_robotiq_binary_uses_native_close_not_franka_grasp():
+def test_robotiq_uses_native_position_target_not_franka_grasp():
     class FakeRobotiqClient:
         def __init__(self):
             self.calls = []
 
         def open(self, speed=255, force=128):
-            self.calls.append(("open", speed, force))
-            return True
+            raise AssertionError("Position target path must not call open")
 
         def close(self, speed=255, force=128):
-            self.calls.append(("close", speed, force))
-            return True
+            raise AssertionError("Position target path must not call close")
 
         def move(self, position, speed=255, force=128, wait=False):
             self.calls.append(("move", position, speed, force, wait))
@@ -90,21 +99,20 @@ def test_robotiq_binary_uses_native_close_not_franka_grasp():
         robot_ip="127.0.0.1",
         gripper_host="127.0.0.1",
         gripper_type="robotiq",
-        gripper_mode="binary",
     )
     env._gripper = FakeRobotiqClient()
 
+    env._apply_gripper_action(255.0)
     env._apply_gripper_action(0.0)
-    env._apply_gripper_action(1.0)
 
     assert env._gripper.calls == [
-        ("close", 255, 128),
-        ("open", 255, 128),
+        ("move", 255, 255, 128, False),
+        ("move", 0, 255, 128, False),
     ]
     assert env._cached_robotiq_position == 0
 
 
-def test_robotiq_continuous_rejection_is_nonfatal():
+def test_robotiq_target_rejection_does_not_update_state():
     class BusyRobotiqClient:
         def __init__(self):
             self.calls = []
@@ -117,10 +125,36 @@ def test_robotiq_continuous_rejection_is_nonfatal():
         robot_ip="127.0.0.1",
         gripper_host="127.0.0.1",
         gripper_type="robotiq",
-        gripper_mode="continuous",
     )
     env._gripper = BusyRobotiqClient()
 
     env._apply_gripper_action(42)
 
     assert env._gripper.calls == [(42, 255, 128, False)]
+    assert env._cached_robotiq_position == 0
+
+
+def test_robotiq_target_clips_and_deduplicates_commands():
+    class FakeRobotiqClient:
+        def __init__(self):
+            self.calls = []
+
+        def move(self, position, speed=255, force=128, wait=False):
+            self.calls.append((position, speed, force, wait))
+            return True
+
+    env = FrankaEnv(
+        robot_ip="127.0.0.1",
+        gripper_host="127.0.0.1",
+        gripper_type="robotiq",
+    )
+    env._gripper = FakeRobotiqClient()
+
+    env._apply_gripper_action(300)
+    env._apply_gripper_action(255)
+    env._apply_gripper_action(-1)
+
+    assert env._gripper.calls == [
+        (255, 255, 128, False),
+        (0, 255, 128, False),
+    ]

@@ -62,7 +62,7 @@ def _make_teleop(**kwargs):
 
 
 def test_translation_mapping_and_release():
-    teleop = _make_teleop(action_scale=(2.0, 5.0), gripper_mode=None)
+    teleop = _make_teleop(action_scale=(2.0, 5.0), use_gripper=False)
     try:
         teleop._on_press(_FakeCharKey("w"))
         action, info = teleop.get_action()
@@ -78,7 +78,7 @@ def test_translation_mapping_and_release():
 
 
 def test_rotation_mapping():
-    teleop = _make_teleop(action_scale=(2.0, 5.0), gripper_mode=None)
+    teleop = _make_teleop(action_scale=(2.0, 5.0), use_gripper=False)
     try:
         teleop._on_press(_FakeCharKey("q"))
         teleop._on_press(_FakeCharKey("z"))
@@ -91,7 +91,7 @@ def test_rotation_mapping():
 
 
 def test_opposite_keys_cancel():
-    teleop = _make_teleop(action_scale=(2.0, 5.0), gripper_mode=None)
+    teleop = _make_teleop(action_scale=(2.0, 5.0), use_gripper=False)
     try:
         teleop._on_press(_FakeCharKey("w"))
         teleop._on_press(_FakeCharKey("s"))
@@ -108,7 +108,7 @@ def test_freeze_rotation_zeros_rotation_axes():
     teleop = _make_teleop(
         action_scale=(2.0, 5.0),
         freeze_rotation=True,
-        gripper_mode=None,
+        use_gripper=False,
     )
     try:
         teleop._on_press(_FakeCharKey("q"))
@@ -121,7 +121,7 @@ def test_freeze_rotation_zeros_rotation_axes():
 
 
 def test_shift_slow_mode_scales_action():
-    teleop = _make_teleop(action_scale=(2.0, 5.0), gripper_mode=None)
+    teleop = _make_teleop(action_scale=(2.0, 5.0), use_gripper=False)
     try:
         teleop._on_press(_FakeCharKey("w"))
         teleop._on_press(_FakeKeyboard.Key.shift)
@@ -132,34 +132,38 @@ def test_shift_slow_mode_scales_action():
         teleop.close()
 
 
-def test_gripper_binary_is_edge_triggered():
-    teleop = _make_teleop(action_scale=(2.0, 5.0), gripper_mode="binary")
+def test_gripper_buttons_select_endpoint_targets():
+    teleop = _make_teleop(
+        action_scale=(2.0, 5.0),
+        gripper_open_value=0.0,
+        gripper_close_value=255.0,
+    )
     try:
         action, info = teleop.get_action()
         assert action.shape == (7,)
-        assert action[-1] == 1.0
+        assert action[-1] == 0.0
         assert info["intervened"] is False
 
         teleop._on_press(_FakeKeyboard.Key.space)
         action, info = teleop.get_action()
-        assert action[-1] == 0.0
+        assert action[-1] == 255.0
         assert info["intervened"] is True
 
         action, info = teleop.get_action()
-        assert action[-1] == 0.0
+        assert action[-1] == 255.0
         assert info["intervened"] is False
 
         teleop._on_release(_FakeKeyboard.Key.space)
         teleop._on_press(_FakeKeyboard.Key.enter)
         action, info = teleop.get_action()
-        assert action[-1] == 1.0
+        assert action[-1] == 0.0
         assert info["intervened"] is True
     finally:
         teleop.close()
 
 
 def test_escape_sets_exit_requested():
-    teleop = _make_teleop(action_scale=(2.0, 5.0), gripper_mode=None)
+    teleop = _make_teleop(action_scale=(2.0, 5.0), use_gripper=False)
     try:
         teleop._on_press(_FakeKeyboard.Key.esc)
         _, info = teleop.get_action()
@@ -169,7 +173,7 @@ def test_escape_sets_exit_requested():
 
 
 def test_maybe_override_respects_intervened_state():
-    teleop = _make_teleop(action_scale=(2.0, 5.0), gripper_mode=None)
+    teleop = _make_teleop(action_scale=(2.0, 5.0), use_gripper=False)
     try:
         base = np.ones(6, dtype=np.float64)
         action, info = teleop.maybe_override(base)

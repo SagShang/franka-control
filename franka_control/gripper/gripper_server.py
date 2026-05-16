@@ -49,12 +49,12 @@ logger = logging.getLogger(__name__)
 # Franka Hand official specs:
 #   Max opening width:  80 mm (0.08 m)
 #   Max speed:          0.10 m/s (total travel)
-#   Continuous force:   70 N
+#   Rated force:        70 N
 #   Max grasping force: 140 N
 
 # Defaults (conservative)
 DEFAULT_SPEED = 0.1        # m/s (== max speed)
-DEFAULT_FORCE = 40.0       # N   (< continuous 70 N)
+DEFAULT_FORCE = 40.0       # N   (< rated 70 N)
 DEFAULT_OPEN_WIDTH = 0.08  # m   (== max width)
 
 # Server defaults

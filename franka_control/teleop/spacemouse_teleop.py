@@ -61,7 +61,7 @@ DEFAULT_AXIS_REMAP = [
 class SpaceMouseTeleop:
     """SpaceMouse teleoperation action provider.
 
-    Spawns a background process to continuously poll the SpaceMouse.
+    Spawns a background process to poll the SpaceMouse.
     The main thread reads the latest state non-blocking via get_action().
 
     Args:
@@ -72,8 +72,9 @@ class SpaceMouseTeleop:
         axis_remap: List of (source_axis, sign) tuples defining the
             coordinate frame mapping from SpaceMouse to robot base.
         freeze_rotation: If True, ignore rotation input (3-DOF only).
-        gripper_mode: "binary" (left=close, right=open) or None
-            (no gripper control from SpaceMouse).
+        use_gripper: If True, append a gripper target selected by the buttons.
+        gripper_open_value: Target value emitted by the right button.
+        gripper_close_value: Target value emitted by the left button.
     """
 
     def __init__(
@@ -82,7 +83,9 @@ class SpaceMouseTeleop:
         deadzone: float = DEFAULT_DEADZONE,
         axis_remap: Optional[list[tuple[str, int]]] = None,
         freeze_rotation: bool = False,
-        gripper_mode: Optional[str] = "binary",
+        use_gripper: bool = True,
+        gripper_open_value: float = 1.0,
+        gripper_close_value: float = 0.0,
     ):
         if pyspacemouse is None:
             raise ImportError(
@@ -94,8 +97,10 @@ class SpaceMouseTeleop:
         self._deadzone = deadzone
         self._axis_remap = axis_remap or DEFAULT_AXIS_REMAP
         self._freeze_rotation = freeze_rotation
-        self._gripper_mode = gripper_mode
-        self._last_gripper = 1.0  # default open
+        self._use_gripper = bool(use_gripper)
+        self._gripper_open_value = float(gripper_open_value)
+        self._gripper_close_value = float(gripper_close_value)
+        self._last_gripper = self._gripper_open_value
 
         # Shared state with polling process
         self._manager = multiprocessing.Manager()
@@ -149,7 +154,7 @@ class SpaceMouseTeleop:
 
         Returns:
             action: [dx, dy, dz, drx, dry, drz] or
-                    [dx, dy, dz, drx, dry, drz, gripper] if gripper_mode set.
+                    [dx, dy, dz, drx, dry, drz, gripper] when enabled.
             info: dict with keys:
                 - "intervened": bool — whether SpaceMouse is active
                 - "buttons": [left, right]
@@ -185,13 +190,13 @@ class SpaceMouseTeleop:
         robot_action = np.concatenate([translation, rotation])
 
         # Gripper
-        if self._gripper_mode == "binary":
+        if self._use_gripper:
             left, right = buttons[0], buttons[1]
             if left:
-                self._last_gripper = 0.0  # close
+                self._last_gripper = self._gripper_close_value
                 intervened = True
             elif right:
-                self._last_gripper = 1.0  # open
+                self._last_gripper = self._gripper_open_value
                 intervened = True
             gripper = self._last_gripper
             action = np.append(robot_action, gripper)
@@ -254,4 +259,4 @@ class SpaceMouseTeleop:
     @property
     def action_dim(self) -> int:
         """Return expected action dimension (6 + optional gripper)."""
-        return 7 if self._gripper_mode else 6
+        return 7 if self._use_gripper else 6

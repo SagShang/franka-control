@@ -59,7 +59,7 @@
 | 带相机的数据采集结果 | README demo 和 LeRobot 数据集功能需要真实多模态数据。 | 运行一次短采集：`python -m franka_control.scripts.collect_episodes --robot-ip <CONTROL_PC_IP> --gripper-host <CONTROL_PC_IP> --repo-id test/franka_media --root data/franka_media --task-name "media capture validation" --device keyboard --control-mode ee_delta --action-scale-t 0.5 --action-scale-r 1.0 --fps 30 --num-episodes 1 --cameras config/cameras.yaml --display auto`。如果目录已存在，使用 `--resume` 或换新的 `--repo-id` / `--root`。 |
 | `--no-camera` 数据采集结果 | 用来隔离机器人状态/action 写入链路，不受相机问题影响。 | 运行 `collect_episodes` 并加 `--action-scale-t 0.5 --action-scale-r 1.0 --no-camera --display off`，记录数据集路径和是否成功写入。 |
 | dataset player 可播放结果 | 证明采集出的 LeRobot 数据集能被回放和检查。 | 运行 `python scripts/play_dataset.py --repo-id test/franka_media --root data/franka_media`，确认窗口、HUD、帧切换、播放控制可用。 |
-| blocking gripper 不冻结相机帧的验证 | 这是数据同步质量风险点，抓取动作不能导致保存的数据集视频长时间卡住。 | 已确认：带相机采集时执行夹爪 open/close/grasp，CV2 实时窗口可能阻塞，但保存的数据集正常。后续如复测，应以保存的数据集帧连续性为准，不只看实时预览。 |
+| blocking gripper 不冻结相机帧的验证 | 这是数据同步质量风险点，抓取动作不能导致保存的数据集视频长时间卡住。 | 已确认：带相机采集时执行夹爪 open/close/grasp，CV2 实时窗口可能阻塞，但保存的数据集正常。后续如复测，应以保存的数据集时间线为准，不只看实时预览。 |
 | 任何失败项的完整日志 | 失败也有价值，能避免文档过度承诺。 | 保存命令、完整错误、机器人是否移动、是否急停、恢复方式；不要删除失败记录，只把状态标为 pending 或 failed。 |
 
 ## 4. 图片、GIF、视频 Demo
@@ -68,7 +68,7 @@
 |---|---|---|
 | `docs/assets/system-architecture.png` 最终确认 | 架构图已存在，但发布前需要确认它仍符合真实双机部署。 | 打开图片检查 IP/端口概念是否与真实部署一致；如果一致，无需重录。 |
 | `docs/assets/keyboard-teleop-install-gear.mp4` | README 需要展示 keyboard 遥操作可以完成精密装配任务。 | 已采集键盘遥操作安装齿轮 demo；发布前检查画面不包含敏感信息。 |
-| `docs/assets/spacemouse-teleop-pouring.mp4` | README 需要展示 SpaceMouse 连续 6-DoF 遥操作能力。 | 已采集 SpaceMouse 倒水 demo；发布前检查画面不包含敏感信息。 |
+| `docs/assets/spacemouse-teleop-pouring.mp4` | README 需要展示 SpaceMouse 6-DoF 遥操作能力。 | 已采集 SpaceMouse 倒水 demo；发布前检查画面不包含敏感信息。 |
 | `docs/assets/dataset-player-fruit-basket.mp4` | 证明采集完成后可以用 dataset player 回放真实 LeRobot 数据集。 | 已采集水果放入篮子的 dataset playback demo；确认 HUD/播放信息可读。 |
 | `docs/assets/trajectory-analysis.png` | 证明数据集轨迹可视化可用。 | 已用 dataset player 的 `v` 控制生成 trajectory figure。 |
 | `docs/assets/action-distribution.png` | 证明数据集 action distribution 分析可用。 | 已用 dataset player 的 `a` 控制生成 action distribution figure。 |

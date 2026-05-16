@@ -18,7 +18,7 @@ logger = logging.getLogger(__name__)
 
 
 # From GELLO's FR3 ROS 2 implementation. These centers keep the leader joints
-# in the same continuous branch as the physical FR3 joint range.
+# near the physical FR3 joint range after angle wrapping.
 FR3_JOINT_LIMITS = np.array(
     [
         [-2.9007, 2.9007],
@@ -95,14 +95,12 @@ class GelloTeleop:
             from the config.
         gello_root: Optional path to the upstream ``gello_software`` checkout.
             Useful when the package has not been installed into the environment.
-        gripper_mode: ``"continuous"``, ``"binary"``, or None. Continuous mode
-            maps GELLO open-width percentage to the selected output units.
+        use_gripper: If True, append a gripper target mapped from the GELLO
+            open-width percentage.
         gripper_output: ``"franka_hand_width"`` outputs meters where 0.08 is
             open. ``"robotiq_position"`` outputs native Robotiq position bits
             where 0 is open and 255 is closed.
-        gripper_max_width: Maximum Franka Hand width in meters for continuous
-            mode.
-        binary_gripper_threshold: Threshold used only in binary mode.
+        gripper_max_width: Maximum Franka Hand width in meters.
     """
 
     def __init__(
@@ -111,10 +109,9 @@ class GelloTeleop:
         config_section: str = "SINGLE",
         port: str | None = None,
         gello_root: str | Path | None = None,
-        gripper_mode: str | None = "continuous",
+        use_gripper: bool = True,
         gripper_output: str = "franka_hand_width",
         gripper_max_width: float = 0.08,
-        binary_gripper_threshold: float = 0.5,
     ):
         _maybe_add_gello_root(gello_root)
         try:
@@ -141,16 +138,16 @@ class GelloTeleop:
         if self._joint_signs.shape != (7,) or self._assembly_offsets.shape != (7,):
             raise ValueError("joint_signs and assembly_offsets must both have length 7")
 
-        self._has_gripper = bool(config.get("gripper", False))
-        self._gripper_mode = gripper_mode
+        self._has_gripper = bool(config.get("gripper", False)) and bool(use_gripper)
         if gripper_output not in {"franka_hand_width", "robotiq_position"}:
             raise ValueError(
                 "gripper_output must be 'franka_hand_width' or 'robotiq_position'"
             )
         self._gripper_output = gripper_output
         self._gripper_max_width = float(gripper_max_width)
-        self._binary_gripper_threshold = float(binary_gripper_threshold)
-        self._last_gripper = 1.0
+        self._last_gripper = (
+            0.0 if gripper_output == "robotiq_position" else self._gripper_max_width
+        )
         self._last_gripper_percent = 1.0
         self._gripper_range_rad = np.asarray(
             config.get("gripper_range_rad", [0.0, 1.0]), dtype=np.float64
@@ -213,17 +210,10 @@ class GelloTeleop:
             return self._last_gripper, self._last_gripper_percent
 
         gripper_percent = float(np.clip((raw[7] - low) / (high - low), 0.0, 1.0))
-        if self._gripper_mode == "binary":
-            gripper = (
-                1.0 if gripper_percent >= self._binary_gripper_threshold else 0.0
-            )
-        elif self._gripper_mode == "continuous":
-            if self._gripper_output == "robotiq_position":
-                gripper = (1.0 - gripper_percent) * 255.0
-            else:
-                gripper = gripper_percent * self._gripper_max_width
+        if self._gripper_output == "robotiq_position":
+            gripper = (1.0 - gripper_percent) * 255.0
         else:
-            gripper = gripper_percent
+            gripper = gripper_percent * self._gripper_max_width
         self._last_gripper = gripper
         self._last_gripper_percent = gripper_percent
         return gripper, gripper_percent
@@ -234,7 +224,7 @@ class GelloTeleop:
         arm = self._read_arm(raw[:7])
         gripper, gripper_percent = self._read_gripper(raw)
 
-        if self._gripper_mode is None:
+        if not self._has_gripper:
             action = arm
         else:
             action = np.append(arm, gripper)
@@ -242,7 +232,7 @@ class GelloTeleop:
         return action.astype(np.float64), {
             "intervened": True,
             "joint_pos": arm.copy(),
-            "gripper": None if self._gripper_mode is None else gripper,
+            "gripper": gripper if self._has_gripper else None,
             "gripper_percent": gripper_percent,
             "gripper_output": self._gripper_output,
         }
@@ -267,4 +257,4 @@ class GelloTeleop:
 
     @property
     def action_dim(self) -> int:
-        return 8 if self._gripper_mode else 7
+        return 8 if self._has_gripper else 7

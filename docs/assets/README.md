@@ -18,7 +18,7 @@ Release media:
 | `trajectory-analysis.png` | Dataset trajectory visualization from the `v` player action |
 | `action-distribution.png` | Dataset action distribution from the `a` player action |
 
-Keep binary assets small enough for GitHub. Prefer compressed PNG and short MP4
+Keep media assets small enough for GitHub. Prefer compressed PNG and short MP4
 clips only when they materially improve the documentation. A live
 `data-collection-preview` clip is optional for `v0.1.0`; the saved dataset
 playback video and hardware validation record already demonstrate camera-backed

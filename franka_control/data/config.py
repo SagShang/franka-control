@@ -29,11 +29,10 @@ class CollectionConfig:
     robot_ip: str
     gripper_host: str
     gripper_port: int = 5556
-    gripper_type: Literal["franka_hand", "robotiq"] = "franka_hand"
+    gripper_type: Literal["franka_hand", "robotiq"] = "robotiq"
 
     # Control mode
     control_mode: Literal["joint_abs", "joint_delta", "ee_abs", "ee_delta"] = "joint_abs"
-    gripper_mode: Literal["binary", "continuous"] = "binary"
 
     # Recording parameters
     fps: int = 60

@@ -92,12 +92,12 @@ def test_gello_teleop_loads_config_and_returns_joint_abs_action(tmp_path):
     assert kwargs["use_fake_fallback"] is False
 
 
-def test_gello_teleop_supports_port_override_and_no_gripper_mode(tmp_path):
+def test_gello_teleop_supports_port_override_and_no_gripper(tmp_path):
     config = _write_config(tmp_path)
     teleop = GelloTeleop(
         config_path=config,
         port="/dev/ttyUSB42",
-        gripper_mode=None,
+        use_gripper=False,
     )
     try:
         action, info = teleop.get_action()
