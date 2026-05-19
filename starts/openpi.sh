@@ -4,7 +4,7 @@ python -m franka_control.scripts.openpi_inference \
 --robot-ip 127.0.0.1 \
 --gripper-host 127.0.0.1 \
 --gripper-type robotiq \
---prompt "pick up the blue cube and place it in the basket" \
+--prompt "pick up the cube and place it in the basket" \
 --control-mode joint_abs \
 --high-camera base_camera \
 --wrist-camera wrist_camera \
