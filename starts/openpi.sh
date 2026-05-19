@@ -10,4 +10,4 @@ python -m franka_control.scripts.openpi_inference \
 --wrist-camera wrist_camera \
 --cameras config/cameras.yaml \
 --display off \
---hz 20
+--hz 10
